@@ -7,28 +7,13 @@ Created on Wed Mar 06 16:02:00 2019
 
 # import necessary modules
 import time
-from pymavlink import mavutil
 import math
-from gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon
+from gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon, mavutil
 
 # Empty data stroage for reference
 dataStorageAgri ={'vx': None,
                   'vy': None,
                   'vz': None}
-
-# list of remaining messages to be sent
-# 3 lists for having 3 different rate (frequency) of sending.
-msgP1List = []      # priority 1
-msgP2List = []      # priority 2
-msgP3List = []      # priority 3
-
-freqP1 = float(10)
-freqP2 = float(1)
-freqP3 = float(0.1)
-
-# List of scheduled tasks
-schTaskList = []
-
 
 def set_data_stream(mavConnection):
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
@@ -57,6 +42,7 @@ def handle_sensor(threadKill, lock):
         time.sleep(1)
 
 def handle_messeges(recieved_msg, lock):
+    global dataStorageAgri
     with lock:
         if recieved_msg.get_type() == "GLOBAL_POSITION_INT":
             dataStorageAgri['vx'] = 0.01*recieved_msg.vx
@@ -68,6 +54,20 @@ def handle_messeges(recieved_msg, lock):
     handle_common_message(recieved_msg, lock)
 
 def update(mavConnection, lock):
+    ############################### Defining Variables ##############################
+    
+    # list of remaining messages to be sent
+    msgList = []
+   
+    freq = float(100)
+    
+    # List of scheduled tasks
+    schTaskList = []
+    
+    global dataStorageAgri
+
+    #################################################################################
+    
     # set data stream rate for this vehicle
     set_data_stream(mavConnection)
 
@@ -80,13 +80,11 @@ def update(mavConnection, lock):
     # ALSO MAKE SURE SCHEDULED TASKS TAKE MUCH LESS TIME THAN THE TIME INTERVAL 
     
     # schedule common tasks
-    schedule_common_tasks(schTaskList, lock)
+    schedule_common_tasks(schTaskList, msgList, lock)
 
     # Schedule message sending tasks
     # schTaskList.append(ScheduleTask(timeInterval, functionName, functionArguments))
-    schTaskList.append(ScheduleTask(1./freqP1, send_remaining_msg, msgP1List, mavConnection, lock))
-    schTaskList.append(ScheduleTask(1./freqP2, send_remaining_msg, msgP2List, mavConnection, lock))
-    schTaskList.append(ScheduleTask(1./freqP3, send_remaining_msg, msgP3List, mavConnection, lock))
+    schTaskList.append(ScheduleTask(1./freq, send_remaining_msg, msgList, mavConnection, lock))
 
     ####################################################################################
 
@@ -97,10 +95,10 @@ def update(mavConnection, lock):
     while True:
         try:
             # Prevent unnecessary resource usage by this program
-            time.sleep(0.1)
+            time.sleep(0.2)
 
             ############################# Sequential Tasks ###############################
-            print "ih"
+            
 
             ##############################################################################
 

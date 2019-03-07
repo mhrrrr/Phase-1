@@ -17,6 +17,7 @@ Created on Mon Feb 18 15:33:00 2019
 from util.gacommonutil import recieving_loop, create_mavlink_connection
 import threading
 import argparse
+import importlib
 
 # handle arguments
 parser = argparse.ArgumentParser()
@@ -31,14 +32,10 @@ vehicles = ['GA3', 'GA3T', 'GA3A', 'GA3M']
 vehicle = args.vehicle
 
 # import appropriate utility for vehicle
-if vehicle == 'GA3':
-    import util.ga3util as vehutil
-elif vehicle == 'GA3T':
-    import util.ga3tutil as vehutil
-elif vehicle == 'GA3A':
-    import util.ga3autil as vehutil
-elif vehicle == 'GA3M':
-    import util.ga3mutil as vehutil
+if vehicle in vehicles:
+    modname = "util." + vehicle.lower() + "util"
+    print modname
+    vehutil = importlib.import_module(modname)
 else:
     print("Please give valid vehicle using\n")
     print("python pymavlink_main.py --vehicle <VehicleName>\n")

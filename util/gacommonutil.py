@@ -120,13 +120,20 @@ def check_pause(lock):
         else:
             shouldPause = False  
 
+def send_heartbeat(msgList, lock):
+    msg = mavutil.mavlink.MAVLink_heartbeat_message(18, 8, 0, 0, 0, 3)
+    with lock:
+        msgList.append(msg)
+
 # schedule common tasks
-def schedule_common_tasks(schTaskList, lock):
+def schedule_common_tasks(schTaskList, msgList, lock):
     # schTaskList.append(ScheduleTask(timeInterval, functionName, functionArguments))
     schTaskList.append(ScheduleTask(0.1, check_pause, lock))
+    schTaskList.append(ScheduleTask(1, send_heartbeat, msgList, lock))
 
 # handle common messages
 def handle_common_message(recieved_msg, lock):
+    global dataStorageCommon
     with lock:
         if recieved_msg.get_type() == "RC_CHANNELS":
             dataStorageCommon['rc6'] = recieved_msg.chan6_raw
