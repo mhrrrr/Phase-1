@@ -20,13 +20,13 @@
 
 		python pymavlink_main.py --vehicle <VehicleName>
 
-* Currently supported vehicles are 'GA3', 'GA3T', 'GA3A', 'GA3M', 'SITL'
-* If no option is given default vehicle is 'SITL'
+* Currently supported vehicles are 'GA3', 'GA3T', 'GA3A', 'GA3M'
 
 ### Testing ###
 * For SITL testing run pymavlink
 
-		python pymavlink_main.py --vehicle SITL
+		python pymavlink_main.py --vehicle <VehicleName> --sitludp
+		python pymavlink_main.py --vehicle <VehicleName> --sitltcp
 
 ### Who do I talk to? ###
 
