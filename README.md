@@ -12,9 +12,22 @@
 * Enable serial0 port on RPi
 * Connect serial0 to Telem1/2 of PX4
 * Set baudrate of SERIAL1/2 to 921600 on APM code stack
-* Other modules will be required based on the specific vehicle
+* Other modules will be required based on the specific vehicle. For example, GA3Agri might use pwm output and will require RPIO to be installed
+
+* Add pymavlink_main.py to run at boot using update-rc.d
+
+* run program by giving following command
+
+		python pymavlink_main.py --vehicle <VehicleName>
+
+* Currently supported vehicles are 'GA3', 'GA3T', 'GA3A', 'GA3M', 'SITL'
+* If no option is given default vehicle is 'SITL'
+
+### Testing ###
+* For SITL testing run pymavlink
+
+		python pymavlink_main.py --vehicle SITL
 
 ### Who do I talk to? ###
 
 * Sachchit Vekaria
-* Other community or team contact
