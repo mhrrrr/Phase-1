@@ -14,6 +14,7 @@ Created on Wed Mar 06 14:21:00 2019
 import time
 from pymavlink import mavutil
 from threading import Timer
+import numpy as np
 
 # mavlink connection create
 def create_mavlink_connection(sitl):
@@ -23,7 +24,7 @@ def create_mavlink_connection(sitl):
                                                    source_system=1,
                                                    source_component=10)
     elif sitl == 'udp':
-        mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14550',
+        mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14551',
                                                    source_system=1,
                                                    source_component=10)
     else:
@@ -51,21 +52,23 @@ def recieving_loop(threadKill, mavConnection, vehutil, lock):
         if threadKill[0]:
             mavConnection.close()
             break
-
+        
         # Prevent unnecessary resource usage by this program
         time.sleep(0.01)
-
-        # Recieve the messages
-        recieved = mavConnection.recv_match()
-
-        # If empty message ignore
-        if recieved is not None:
-
-            # debug
-            # print(recieved)
-
-            # Start storing values
-            vehutil.handle_messeges(recieved, lock)
+        try:
+            # Recieve the messages
+            recieved = mavConnection.recv_match()
+    
+            # If empty message ignore
+            if recieved is not None:
+                # debug
+                # print(recieved)
+    
+                # Start storing values
+                vehutil.handle_messeges(recieved, lock)
+        except KeyboardInterrupt:
+            # again raise keyboardinterrupt so that outer try except can also handle the clean thread exits
+            raise KeyboardInterrupt
 
 
 # Class for scheduling tasks
@@ -138,3 +141,7 @@ def handle_common_message(recieved_msg, lock):
         if recieved_msg.get_type() == "RC_CHANNELS":
             dataStorageCommon['rc6'] = recieved_msg.chan6_raw
             return
+        
+# handle common sensors
+def handle_common_sensors(schTaskList, lock):
+    pass

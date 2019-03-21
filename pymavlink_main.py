@@ -34,7 +34,6 @@ vehicle = args.vehicle
 # import appropriate utility for vehicle
 if vehicle in vehicles:
     modname = "util." + vehicle.lower() + "util"
-    print modname
     vehutil = importlib.import_module(modname)
 else:
     print("Please give valid vehicle using\n")
@@ -60,8 +59,7 @@ lock = threading.Lock()
 threads = []
 
 # Thread Kill for infinite threads
-threadKill = [[False],      # recieving_loop
-              [False]]      # sensors reading
+threadKill = [[False]]      # recieving_loop
 
 try:
     # start mavlink connection and get the mavConnection object
@@ -70,10 +68,6 @@ try:
     # start read loop
     threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], mavConncection, vehutil, lock,)))
     threads[0].start()
-
-    # start reading vehicle related sensors
-    threads.append(threading.Thread(target=vehutil.handle_sensor, args=(threadKill[1], lock,)))
-    threads[1].start()
 	
     # Run the main calculation and updates on main thread
     # i.e. this thread
