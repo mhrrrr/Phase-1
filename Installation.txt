@@ -1,7 +1,16 @@
+# Settings for connections
+1. Proper static IP in /etc/dhcpcd.conf
+2. Wifi connection setting in /etc/wpa-supplicant/wpa-supplicant.conf
+
+# Putting process at boot
+1. Create .sh file in /etc/init.d/ folder. Don't use .sh extension
+2. Use reference scripts in init.d
+3. update-rc.d service_name defaults
+
 # Upload
 1. Create folder pymavlink on Desktop
 2. Upload pymavlink_main.py and util folder into that folder
-3. Upload rpicamsrc on Desktop from Submodules
+3. Upload gst-rpicamsrc on Desktop from Submodules
 4. Upload gst-rtsp-server on Desktop from Submodules
 
 # for telemetry
@@ -14,7 +23,7 @@ sudo pip install pyserial
 # for video
 sudo apt-get install gstreamer1.0-plugins-bad gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-tools libgstreamer1.0-dev libgstreamer1.0-0-dbg libgstreamer1.0-0 gstreamer1.0-omx libgstreamer-plugins-base1.0-dev gtk-doc-tools
 
-cd ~/Desktop/rpicamsrc
+cd ~/Desktop/gst-rpicamsrc
 chmod +777 autogen.sh
 ./autogen.sh
 make
@@ -27,3 +36,6 @@ make
 sudo make install
 
 ./test-launch "( rpicamsrc preview=false bitrate=2000000 keyframe-interval=15 ! video/x-h264, width=1280, height=720, framerate=30/1 ! h264parse ! rtph264pay name=pay0 pt=96 )"
+
+# checking in gcs
+gst-launch-1.0 rtspsrc location=rtsp://192.168.2.50:8554/test latency=20 ! rtph264depay ! h264parse ! mfxh264dec ! videoconvert ! autovideosink sync=false
