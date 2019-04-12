@@ -1,0 +1,29 @@
+# Upload
+1. Create folder pymavlink on Desktop
+2. Upload pymavlink_main.py and util folder into that folder
+3. Upload rpicamsrc on Desktop from Submodules
+4. Upload gst-rtsp-server on Desktop from Submodules
+
+# for telemetry
+sudo apt-get install screen python-wxgtk2.8 python-matplotlib python-opencv python-pip python-numpy python-dev libxml2-dev libxslt-dev python-lxml
+sudo pip install future
+sudo pip install pymavlink
+sudo pip install mavproxy
+sudo pip install pyserial
+
+# for video
+sudo apt-get install gstreamer1.0-plugins-bad gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-tools libgstreamer1.0-dev libgstreamer1.0-0-dbg libgstreamer1.0-0 gstreamer1.0-omx libgstreamer-plugins-base1.0-dev gtk-doc-tools
+
+cd ~/Desktop/rpicamsrc
+chmod +777 autogen.sh
+./autogen.sh
+make
+sudo make install
+
+cd ~/Desktop/gst-rtsp-server
+chmod +777 autogen.sh
+./autogen.sh
+make
+sudo make install
+
+./test-launch "( rpicamsrc preview=false bitrate=2000000 keyframe-interval=15 ! video/x-h264, width=1280, height=720, framerate=30/1 ! h264parse ! rtph264pay name=pay0 pt=96 )"
