@@ -25,7 +25,6 @@ dataStorageAgri ={'vx': 0,
                   'testing': False}
 
 def set_data_stream(mavConnection):
-    pass
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
     # don't change that as it affects other vehicles as well
     
@@ -60,7 +59,6 @@ def handle_messeges(recieved_msg, lock):
             dataStorageAgri['vy'] = 0.01*recieved_msg.vy
             dataStorageAgri['vz'] = 0.01*recieved_msg.vz
             speed = np.sqrt(dataStorageAgri['vx']**2+dataStorageAgri['vy']**2)
-            print "2", speed
             return
         
         if recieved_msg.get_type() == "MISSION_CURRENT":

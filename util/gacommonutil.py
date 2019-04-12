@@ -110,7 +110,8 @@ def send_remaining_msg(msgList, mavConnection, lock):
         with lock:
             # send all remaining messages one by one
             for msg in msgList:
-                mavConnection.mav.send(msg)
+                if msg is not None:
+                    mavConnection.mav.send(msg)
             del msgList[:]
 
 def check_pause(lock):
@@ -145,3 +146,4 @@ def handle_common_message(recieved_msg, lock):
 # handle common sensors
 def handle_common_sensors(schTaskList, lock):
     pass
+

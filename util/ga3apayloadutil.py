@@ -406,9 +406,6 @@ class OnlineHealthMonitor:
     def __init__(self):
         pass        
         
-        
-        
-        
 def calc_speed(dataStorageAgri, lock):
     with lock:
         speed = np.sqrt(dataStorageAgri['vx']**2+dataStorageAgri['vy']**2)
