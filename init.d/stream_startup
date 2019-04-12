@@ -1,0 +1,13 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:       stream_startup
+# Required-Start: $network $remote_fs $syslog
+# Required-Stop:  $network $remote_fs $syslog
+# Default-Start:  2 3 4 5
+# Default-Stop:   0 1 6
+# Description:    MavProxy
+### END INIT INFO
+
+/home/pi/Desktop/gst-rtsp-server/examples/test-launch "( rpicamsrc preview=false expousre-mode=1 awb=1 bitrate=1000000 keyframe-interval=15 ! video/x-h264, width=640, height=480, framerate=24/1 ! h264parse ! rtph264pay name=pay0 pt=96 )" &
+
+exit 0
