@@ -1,0 +1,17 @@
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:       mavproxy_startup
+# Required-Start: $network $remote_fs $syslog
+# Required-Stop:  $network $remote_fs $syslog
+# Default-Start:  2 3 4 5
+# Default-Stop:   0 1 6
+# Description:    MavProxy
+### END INIT INFO
+
+sleep 10
+export MAVLINK20="1"
+
+cd /home/pi/Desktop/pymavlink/logs/
+/usr/bin/python /home/pi/Desktop/pymavlink/pymavlink_main.py --vehicle GA3 > log 2>err &
+
+exit 0
