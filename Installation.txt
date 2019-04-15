@@ -8,9 +8,13 @@
 3. update-rc.d service_name defaults
 
 # USB identification
+To know kernels
+udevadm info -a -p $(udevadm info -q path -n /dev/ttyUSB1)
 change in /etc/udev/rules.d/99-usb-serial.rules
 SUBSYSTEM=="tty",ATTRS{idVendor}=="067b",ATTRS{idProduct}=="2303",SYMLINK+="pixhawk" 
 SUBSYSTEM=="tty",ATTRS{idVendor}=="12d1",ATTRS{idProduct}=="1506",KERNELS=="1-1.2.1",SYMLINK+="dongle1"
+To check,
+ls -l /dev/pixhawk
 
 # Upload
 1. Create folder pymavlink on Desktop
