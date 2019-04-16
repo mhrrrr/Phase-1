@@ -48,3 +48,8 @@ sudo make install
 
 # checking in gcs
 gst-launch-1.0 rtspsrc location=rtsp://192.168.2.50:8554/test latency=20 ! rtph264depay ! h264parse ! mfxh264dec ! videoconvert ! autovideosink sync=false
+
+
+# GPIO pin access in python using pigpio
+1. Intall pigpio using tar file in pib folder
+2. sudo pigpiod
