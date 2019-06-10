@@ -76,7 +76,7 @@ class AgriPayload:
         testing = dataStorageAgri['testing']
         
         # check whether we should be spraying
-        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] >= dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1:
+        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] >= dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
             self.shouldSpraying = True
         else:
             self.shouldSpraying = False

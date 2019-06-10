@@ -3,7 +3,7 @@
 2. Wifi connection setting in /etc/wpa-supplicant/wpa-supplicant.conf
 
 # Putting process at boot
-1. Create .sh file in /etc/init.d/ folder. Don't use .sh extension
+1. Create script file in /etc/init.d/ folder. Don't use .sh extension
 2. Use reference scripts in init.d
 3. update-rc.d service_name defaults
 
