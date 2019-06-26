@@ -14,7 +14,7 @@ Created on Mon Feb 18 15:33:00 2019
 ######################################################################
 
 # import necessary modules
-from util.gacommonutil import recieving_loop, create_mavlink_connection
+from util.gacommonutil import recieving_loop, create_mavlink_connection, dataStorageCommon
 import threading
 import argparse
 import importlib
@@ -31,6 +31,16 @@ args = parser.parse_args()
 vehicles = ['GA3', 'GA3T', 'GA3A', 'GA3M']
 vehicle = args.vehicle
 
+# define whether it is sitl or not
+sitl = None
+
+if args.sitludp:
+    sitl = 'udp'
+    dataStorageCommon['isSITL'] = True
+if args.sitltcp:
+    sitl = 'tcp'
+    dataStorageCommon['isSITL'] = True
+    
 # import appropriate utility for vehicle
 if vehicle in vehicles:
     modname = "util." + vehicle.lower() + "util"
@@ -41,15 +51,6 @@ else:
     print("Valid Vehicle names are")
     print(vehicles)
     exit()
-
-# define whether it is sitl or not
-sitl = None
-
-if args.sitludp:
-    sitl = 'udp'
-if args.sitltcp:
-    sitl = 'tcp'
-
 
 # master threading lock
 # try to utilise only this lock everywhere
@@ -63,15 +64,15 @@ threadKill = [[False]]      # recieving_loop
 
 try:
     # start mavlink connection and get the mavConnection object
-    mavConncection = create_mavlink_connection(sitl)
+    mavConnection = create_mavlink_connection(sitl)
 
     # start read loop
-    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], mavConncection, vehutil, lock,)))
+    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], mavConnection, vehutil, lock,)))
     threads[0].start()
 	
     # Run the main calculation and updates on main thread
     # i.e. this thread
-    vehutil.update(mavConncection, lock)
+    vehutil.update(mavConnection, lock)
 
 except KeyboardInterrupt:
     # send kill signal to all threads 

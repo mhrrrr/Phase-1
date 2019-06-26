@@ -9,6 +9,9 @@ import numpy as np
 import time
 import struct
 import serial
+from gacommonutil import dataStorageCommon
+if not dataStorageCommon['isSITL']:
+    import pigpio
 
 class AgriPayload:
     def __init__(self):        
@@ -17,15 +20,16 @@ class AgriPayload:
         self.micromiserPWM = 0
         
         # Status
-        self.remainingPayload = 0.                   # in liters
-        self.flowRate = 0.                           # in ltr/min
+        self.remainingPayload = 15.                   # in liters
+        self.reqFlowRate = 0.                           # in ltr/min
         self.shouldSpraying = False
         
         # pump parameters
-        self.pumpMaxPWM = 1900
-        self.pumpMinPWM = 1250
-        self.pumpMaxFlowRate = 2.5                  # in ltr/min
-        self.pumpMinFlowRate = 0.9                  # in ltr/min
+        self.pumpMaxPWM = 1800
+        self.pumpMinPWM = 1400
+        self.pumpAbsMinPWM = 1000
+        self.pumpMaxFlowRate = 1.32                  # in ltr/min
+        self.pumpMinFlowRate = 0.5                  # in ltr/min
         self.pumpPWM = 0
         
         # Nozzle parameters
@@ -46,13 +50,19 @@ class AgriPayload:
         self.maxSpeedSentCount = 0
         self.sprayDensity = self.perAcrePestiscide/4047.
         self.maxSpeed = self.maxFlowRate/60./self.swath/self.sprayDensity + 0.15
+
+        # GPIO handling
+        if not dataStorageCommon['isSITL']:
+            self.pi = pigpio.pi()
+        self.pumpPin = 18
+        self.nozzPin = 19
         
         # Time related
         self.time = time.time()
         
-    def calc_remaining_payload(self):
+    def calc_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:
-            self.remainingPayload = self.remainingPayload - self.dt * (self.flowRate/60.)
+            self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
             
     def update_time(self):
         currTime = time.time() 
@@ -72,6 +82,9 @@ class AgriPayload:
         # RPM
         actualRPM = dataStorageAgri['actualNozzRPM']
         
+        # actual flow rate
+        actualFlowRate = dataStorageAgri['actualFlowRate']
+        
         # Are we testing
         testing = dataStorageAgri['testing']
         
@@ -89,19 +102,25 @@ class AgriPayload:
             self.calc_flow_rate(speed)
             
             # calculate pwm for pump and nozzle
-            self.calc_pump_pwm()
+            self.calc_pump_pwm(actualFlowRate)
             self.calc_nozz_pwm(actualRPM)
             
         else:
             if testing:
-                self.nozzPWM = 1500
-                self.pumpPWM = 1500
+                self.nozzPWM = 1999
+                self.pumpPWM = 1700
+                actualFlowRate = 1.2
             else:
                 self.nozzPWM = self.nozzMinPWM
-                self.pumpPWM = self.pumpMinPWM
+                self.pumpPWM = self.pumpAbsMinPWM
                 
-        # update the pwm in FCS
+        # update the pwm in DCU
         self.update_pwm(mavConnection, mavutil, msgList, lock)
+        
+        # update the remaining payload
+        self.calc_remaining_payload(actualFlowRate)
+        with lock:
+            dataStorageAgri['remainingPayload'] = self.remainingPayload
         
     def calc_flow_rate(self, speed):
         # sanity check of speed
@@ -111,47 +130,52 @@ class AgriPayload:
             speed = self.maxSpeed+1
         
         # Calculate flow rate
-        self.flowRate = 60*self.swath*self.sprayDensity*speed
+        self.reqFlowRate = 60*self.swath*self.sprayDensity*speed
 
         
         # check flow rate limit
-        if self.flowRate > self.maxFlowRate:
-            self.flowRate = self.maxFlowRate
-        if self.flowRate < self.pumpMinFlowRate:
-            self.flowRate = self.pumpMinFlowRate
+        if self.reqFlowRate > self.maxFlowRate:
+            self.reqFlowRate = self.maxFlowRate
+        if self.reqFlowRate < self.pumpMinFlowRate:
+            self.reqFlowRate = self.pumpMinFlowRate
             
-    def calc_pump_pwm(self):
-        self.pumpPWM = self.pumpMinPWM + int(float(self.pumpMaxPWM - self.pumpMinPWM)*float(self.flowRate - self.pumpMinFlowRate)/float(self.pumpMaxFlowRate - self.pumpMinFlowRate))
+    def calc_pump_pwm(self, actualFlowRate):
+#        if abs(self.reqFlowRate - actualFlowRate) > 0.1:
+#            pumpPWM = self.pumpPWM + 1 * (self.reqFlowRate - actualFlowRate)
+        pumpPWM = self.pumpMinPWM + int(float(self.pumpMaxPWM - self.pumpMinPWM)*float(self.reqFlowRate - self.pumpMinFlowRate)/float(self.pumpMaxFlowRate - self.pumpMinFlowRate))
+        
+        self.pumpPWM = pumpPWM
         
     def calc_nozz_pwm(self, actualRPM):
         
         if self.nozzType == 'Micromiser':
-            # handle garbage value
-            if actualRPM < 0:
-                actualRPM = 0
-            if actualRPM > 20000:
-                actualRPM = 20000
-            
-            # Calculate Target RPM
-            nozzFlow = self.flowRate/self.nozzNum
-            if nozzFlow < self.nozzMinFlowRate:
-                nozzFlow = self.nozzMinFlowRate
-            if nozzFlow > self.nozzMaxFlowRate:
-                nozzFlow = self.nozzMaxFlowRate
-            
-            # curve fit equation RPM = A * (PS - C) ^ B from Micromiser 10 Datasheet
-            equationCoeefsA = 89248 + (nozzFlow - 0.3) / (0.1 - 0.3) * (180412 - 89248)
-            equationCoeefsB = -0.732 + (nozzFlow - 0.3) / (0.1 - 0.3) * (-0.858 + 0.732)
-            equationCoeefsC = 80 + (nozzFlow - 0.3) / (0.1 - 0.3) * (42 - 80)
-            
-            if (self.nozzMinPS - equationCoeefsC) > 1:
-                nozzTargetRPM = equationCoeefsA * (self.nozzMinPS - equationCoeefsC)**equationCoeefsB
-            else:
-                nozzTargetRPM = 0
-                
-            # P control for maintaing target PWM
-            self.nozzPWM = int(self.nozzPWM + self.nozzP * (nozzTargetRPM - actualRPM))
-            
+            self.nozzPWM = self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate)
+##            # handle garbage value
+##            if actualRPM < 0:
+##                actualRPM = 0
+##            if actualRPM > 20000:
+##                actualRPM = 20000
+##            
+##            # Calculate Target RPM
+##            nozzFlow = self.reqFlowRate/self.nozzNum
+##            if nozzFlow < self.nozzMinFlowRate:
+##                nozzFlow = self.nozzMinFlowRate
+##            if nozzFlow > self.nozzMaxFlowRate:
+##                nozzFlow = self.nozzMaxFlowRate
+##            
+##            # curve fit equation RPM = A * (PS - C) ^ B from Micromiser 10 Datasheet
+##            equationCoeefsA = 89248 + (nozzFlow - 0.3) / (0.1 - 0.3) * (180412 - 89248)
+##            equationCoeefsB = -0.732 + (nozzFlow - 0.3) / (0.1 - 0.3) * (-0.858 + 0.732)
+##            equationCoeefsC = 80 + (nozzFlow - 0.3) / (0.1 - 0.3) * (42 - 80)
+##            
+##            if (self.nozzMinPS - equationCoeefsC) > 1:
+##                nozzTargetRPM = equationCoeefsA * (self.nozzMinPS - equationCoeefsC)**equationCoeefsB
+##            else:
+##                nozzTargetRPM = 0
+##                
+##            # P control for maintaing target PWM
+##            self.nozzPWM = int(self.nozzPWM + self.nozzP * (nozzTargetRPM - actualRPM))
+##            
             if self.nozzPWM > self.nozzMaxPWM:
                 self.nozzPWM = self.nozzMaxPWM
             if self.nozzPWM < self.nozzMinPWM:
@@ -188,35 +212,39 @@ class AgriPayload:
             self.pumpPWM = 2000
         if self.pumpPWM < 1000:
             self.pumpPWM = 1000
-            
-        # create message
-        pumpPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-                                                                  mavConnection.target_component,
-                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-                                                                  0,
-                                                                  9,
-                                                                  self.pumpPWM,
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0)
-        nozzPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-                                                                  mavConnection.target_component,
-                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-                                                                  0,
-                                                                  10,
-                                                                  self.nozzPWM,
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0,
-                                                                  0)
-        
-        with lock:
-            # append message to send list
-            msgList.append(pumpPWMMsg)
-            msgList.append(nozzPWMMsg)
+
+        if not dataStorageCommon['isSITL']:
+            self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
+            self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
+                
+##        # create message
+##        pumpPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
+##                                                                  mavConnection.target_component,
+##                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
+##                                                                  0,
+##                                                                  9,
+##                                                                  self.pumpPWM,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0)
+##        nozzPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
+##                                                                  mavConnection.target_component,
+##                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
+##                                                                  0,
+##                                                                  10,
+##                                                                  self.nozzPWM,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0,
+##                                                                  0)
+##        
+##        with lock:
+##            # append message to send list
+##            msgList.append(pumpPWMMsg)
+##            msgList.append(nozzPWMMsg)
         
 ###############################################################################
         
@@ -264,41 +292,45 @@ class PIBStatus:
         self.timer = time.time()
         
         # Nozzle configuration
-        self.nozzleConfiguration = 0b11110000
+        self.nozzleConfiguration = 0b00111100
         
         # Initialize
         self.init()
         
     def init(self):
-        while True:
-            # keep trying  to open port unitl succesful
-            try:
-                time.sleep(1)
-                self.ser = serial.Serial(port=self.serial,
-                                         baudrate=115200,
-                                         parity=serial.PARITY_ODD,
-                                         stopbits=serial.STOPBITS_ONE,
-                                         bytesize=serial.EIGHTBITS,
-                                         timeout=0.1)
-            except KeyboardInterrupt:
-                raise KeyboardInterrupt
+        if not dataStorageCommon['isSITL']:
+            while True:
+                # keep trying  to open port unitl succesful
+                try:
+                    time.sleep(1)
+                    self.ser = serial.Serial(port=self.serial,
+                                             baudrate=115200,
+                                             parity=serial.PARITY_ODD,
+                                             stopbits=serial.STOPBITS_ONE,
+                                             bytesize=serial.EIGHTBITS,
+                                             timeout=0.1)
+                    break
+                except KeyboardInterrupt:
+                    raise KeyboardInterrupt
+            self.send_nozzle_config()
                 
     def update(self, dataStorageAgri, lock):
-        # read the data
-        data = self.ser.readline()
-        
-        # update the status
-        self.decode_data(data)
-        
-        # transfer data to dataStorageAgri
-        self.update_veh_data(dataStorageAgri, lock)
-
-        # Send the nozzle configuration
-        if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
-            self.set_nozzle_config(dataStorageAgri['NozzleConfig'])
-            self.send_nozzle_config()
+        if not dataStorageCommon['isSITL']:
+            # read the data
+            data = self.ser.readline()
             
-    def update_veh_data(dataStorageAgri, lock):
+            # update the status
+            self.decode_data(data)
+            
+            # transfer data to dataStorageAgri
+            self.update_veh_data(dataStorageAgri, lock)
+    
+            # Send the nozzle configuration
+            if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
+                self.set_nozzle_config(dataStorageAgri['NozzleConfig'])
+                self.send_nozzle_config()
+            
+    def update_veh_data(self, dataStorageAgri, lock):
         with lock:
             pass
 
@@ -323,6 +355,8 @@ class PIBStatus:
         
         # process data only if something is there in the data
         if extractedData:
+            if (len(extractedData) is 20):
+                self.update_data(extractedData)
             
             if (len(extractedData) is not 3):
                 
@@ -331,7 +365,7 @@ class PIBStatus:
                 if (lrc is extractedData[-2]):
                     self.errorNow['INVALID_LRC_RPI'] = False
                     
-                    self.update_data(extractedData)
+                    ##self.update_data(extractedData)
                 else:
                     self.errorNow['INVALID_LRC_RPI'] = True
             else:
@@ -342,29 +376,27 @@ class PIBStatus:
                         if self.errorList[key] == extractedData[1]:
                             self.errorNow[key] = True
 
+
         
     def extract_data(self, data):
-        acceptedLengths = [32,3]
+        acceptedLengths = [36,3]
         dataLength = len(data)
         
         # Reject data with
         # first character not being $
         # length of data not matching to any of the packet size expected by us
         # second character is out of bound of acceptable function codes
-        print("1")
-        if (data[0] == '$') and (dataLength not in acceptedLengths) and (ord(data[1])<8):
-            print("2")
+        if (data[0] == '$') and (dataLength in acceptedLengths) and (int(data[1])<8):
             self.errorNow['WRONG_DATA'] = False
             
             if dataLength == 3:
                 extractedData = struct.unpack('cbc', data)
                 return extractedData
             else:
-                extractedData = struct.unpack('cbhhhhhhhhhhhhhhbc', data)
+                extractedData = struct.unpack('cchhhhhhhhhhhhhhhhBc', data)
                 return extractedData
                 
         else:
-            print("3")
             self.errorNow['WRONG_DATA'] = True
             return None
         
@@ -375,17 +407,18 @@ class PIBStatus:
                 lrc  ^= ord(char)
         else:
             # we are assuming integers
-            for char in data[:-2]:
+            for char in data:
                 lrc  ^= char
         
         return lrc
     
     def update_data(self, extractedData):
         # Recheck data length
-        if len(extractedData) is 18:
+        if len(extractedData) is 20:
             self.status['ATOMIZER_RPM'] = extractedData[2:8]
-            self.status['ATOMIZER_CURRENT'] = extractedData[8:14]
-            self.status['FLOW_METER_READING'] = extractedData[14:16]
+            self.status['ATOMIZER_CURRENT'] = np.asarray(extractedData[8:14])/100.
+            self.status['PUMP_CURRENT'] = np.asarray(extractedData[14:16])/100.
+            self.status['FLOW_METER_READING'] = extractedData[16:18]
             
     def set_nozzle_config(self, val):
         # check value is withing 1 byte limit of int

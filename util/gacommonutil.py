@@ -14,7 +14,6 @@ Created on Wed Mar 06 14:21:00 2019
 import time
 from pymavlink import mavutil
 from threading import Timer
-import numpy as np
 
 # mavlink connection create
 def create_mavlink_connection(sitl):
@@ -98,7 +97,8 @@ class ScheduleTask(object):
         self.is_running = False
 
 # Common data for all vehicles
-dataStorageCommon={'rc6': None}
+dataStorageCommon={'rc6': None,
+                   'isSITL': False}
 
 # overall pause switch for stopping companion computer to send any commands to autopilot
 shouldPause = False

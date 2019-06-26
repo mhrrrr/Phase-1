@@ -7,22 +7,29 @@ Created on Wed Mar 06 16:02:00 2019
 
 # import necessary modules
 import time
-import math
 from gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon, mavutil, handle_common_sensors
-import threading
 from ga3apayloadutil import PIBStatus, AgriPayload
 import numpy as np
+from os import path
 
 # Empty data stroage for reference
 dataStorageAgri ={'vx': 0,
                   'vy': 0,
                   'vz': 0,
+                  'currentMode': 'STABILIZE',
                   'currentWP': 0,
                   'startWP': 2,
                   'endWP': 10,
-                  'NozzleConfig': 0b11110000,
+                  'NozzleConfig': 0b00111100,
                   'actualNozzRPM': 0,
-                  'testing': False}
+                  'actualFlowRate': 0,
+                  'testing': False,
+                  'remainingPayload': 0,
+                  'currentLat': 0,
+                  'currentLon': 0,
+                  'RTLLat': -200,
+                  'RTLLon': -200,
+                  'RTLWP': 0}
 
 def set_data_stream(mavConnection):
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
@@ -46,10 +53,10 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
     handle_common_sensors(schTaskList, lock)
     
     # Initialize Sensor handling class
-    #pibStatus = PIBStatus('/dev/ttyPIB')
+    pibStatus = PIBStatus('/dev/ttyDCU')
     
     # Schedule the tasks
-    #schTaskList.append(0.2, pibStatus.update, dataStorageAgri, lock)
+    schTaskList.append(ScheduleTask(0.2, pibStatus.update, dataStorageAgri, lock))
 
 def handle_messeges(recieved_msg, lock):
     global dataStorageAgri
@@ -58,7 +65,8 @@ def handle_messeges(recieved_msg, lock):
             dataStorageAgri['vx'] = 0.01*recieved_msg.vx
             dataStorageAgri['vy'] = 0.01*recieved_msg.vy
             dataStorageAgri['vz'] = 0.01*recieved_msg.vz
-            speed = np.sqrt(dataStorageAgri['vx']**2+dataStorageAgri['vy']**2)
+            dataStorageAgri['currentLat'] = recieved_msg.lat
+            dataStorageAgri['currentLon'] = recieved_msg.lon
             return
         
         if recieved_msg.get_type() == "MISSION_CURRENT":
@@ -120,6 +128,19 @@ def update(mavConnection, lock):
     schTaskList.append(ScheduleTask(1./freq, send_remaining_msg, msgList, mavConnection, lock))
 
     ####################################################################################
+    
+    ################################ Initial set Up ####################################
+    if path.exists('agri_rtl_file'):
+        with open('agri_rtl_file', 'r') as f:
+            for line in f:
+                data = line.split()
+                with lock:
+                    dataStorageAgri['RTLLat'] = int(data[0])
+                    dataStorageAgri['RTLLon'] = int(data[1])
+                    dataStorageAgri['RTLWP'] = int(data[2])
+                break
+    
+    ####################################################################################
 
     # Final infinite loop on tasks which requires data generated/recieved
     # from Scheduled task and takes long time to run
@@ -129,11 +150,32 @@ def update(mavConnection, lock):
         try:
             # Prevent unnecessary resource usage by this program
             time.sleep(0.2)
-
+            
             ############################# Sequential Tasks ###############################
+            
+            # Save RTL Lat long
+            if mavConnection.flightmode is 'RTL' and dataStorageAgri['currentMode'] is not 'RTL':
+                with lock:
+                    dataStorageAgri['RTLLat'] = dataStorageAgri['currentLat']
+                    dataStorageAgri['RTLLon'] = dataStorageAgri['currentLon']
+                    dataStorageAgri['RTLWP'] = dataStorageAgri['currentWP']
+                with open('agri_rtl_file', 'w') as f:
+                    f.write('%d %d %d'%(dataStorageAgri['RTLLat'], dataStorageAgri['RTLLon'], dataStorageAgri['RTLWP']))
+            
+            dataStorageAgri['currentMode'] = mavConnection.flightmode
+            
+            print dataStorageAgri['testing']
             
             # update the required flow rate to the agri payload handlere
             agriPayload.update(dataStorageAgri, mavConnection, mavutil, msgList, lock)
+            
+            # send the data to GCS
+            data = np.zeros(64, np.uint8)
+            #msg = mavutil.mavlink.MAVLink_ga3a_payload_status_message(0, 0, dataStorageAgri['remainingPayload'], dataStorageAgri['RTLLat'], dataStorageAgri['RTLLon'], dataStorageAgri['RTLWP'])
+            msg = mavutil.mavlink.MAVLink_data64_message(1,64,data)
+            with lock:
+                msgList.append(msg)
+                
 #            print mavConnection.target_system, mavConnection.target_component
             
             #msg = mavutil.mavlink.MAVLink_data16_message(1, 5, [123]*16)
