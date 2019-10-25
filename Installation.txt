@@ -6,6 +6,7 @@
 1. Create script file in /etc/init.d/ folder. Don't use .sh extension
 2. Use reference scripts in init.d
 3. update-rc.d service_name defaults
+4. update-rc.d -f apache2 remove
 
 # USB identification
 To know kernels
@@ -63,4 +64,4 @@ cmake -D CMAKE_BUILD_TYPE=RELEASE \
     -D ENABLE_VFPV3=ON \
     -D BUILD_TESTS=OFF \
     -D INSTALL_PYTHON_EXAMPLES=OFF \
-    -D BUILD_EXAMPLES=OFF ..
+    -D BUILD_EXAMPLES=OFF ../opencv

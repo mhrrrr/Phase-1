@@ -24,6 +24,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--vehicle",help="Vehicle Name", type=str, dest="vehicle")
 parser.add_argument("--sitludp", action="store_true", dest="sitludp")
 parser.add_argument("--sitltcp", action="store_true", dest="sitltcp")
+parser.add_argument("--sitlcom", action="store_true", dest="sitlcom")
 
 args = parser.parse_args()
 
@@ -36,9 +37,15 @@ sitl = None
 
 if args.sitludp:
     sitl = 'udp'
+    dataStorageCommon['sitlType'] = 'udp'
     dataStorageCommon['isSITL'] = True
 if args.sitltcp:
     sitl = 'tcp'
+    dataStorageCommon['sitlType'] = 'tcp'
+    dataStorageCommon['isSITL'] = True
+if args.sitlcom:
+    sitl = 'com'
+    dataStorageCommon['sitlType'] = 'com'
     dataStorageCommon['isSITL'] = True
     
 # import appropriate utility for vehicle

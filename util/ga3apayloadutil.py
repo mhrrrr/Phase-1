@@ -10,6 +10,7 @@ import time
 import struct
 import serial
 from gacommonutil import dataStorageCommon
+import copy
 if not dataStorageCommon['isSITL']:
     import pigpio
 
@@ -20,16 +21,16 @@ class AgriPayload:
         self.micromiserPWM = 0
         
         # Status
-        self.remainingPayload = 15.                   # in liters
+        self.remainingPayload = 15                   # in liters
         self.reqFlowRate = 0.                           # in ltr/min
         self.shouldSpraying = False
         
         # pump parameters
-        self.pumpMaxPWM = 1800
-        self.pumpMinPWM = 1400
+        self.pumpMaxPWM = 1600
+        self.pumpMinPWM = 1100
         self.pumpAbsMinPWM = 1000
         self.pumpMaxFlowRate = 1.32                  # in ltr/min
-        self.pumpMinFlowRate = 0.5                  # in ltr/min
+        self.pumpMinFlowRate = 0.2                  # in ltr/min
         self.pumpPWM = 0
         
         # Nozzle parameters
@@ -59,6 +60,9 @@ class AgriPayload:
         
         # Time related
         self.time = time.time()
+
+        # Debug Timer
+        self.debugTime = time.time()
         
     def calc_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:
@@ -87,9 +91,10 @@ class AgriPayload:
         
         # Are we testing
         testing = dataStorageAgri['testing']
-        
+        #print testing
         # check whether we should be spraying
-        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] >= dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
+        print "WP", dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode
+        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] > dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
             self.shouldSpraying = True
         else:
             self.shouldSpraying = False
@@ -108,16 +113,35 @@ class AgriPayload:
         else:
             if testing:
                 self.nozzPWM = 1999
-                self.pumpPWM = 1700
-                actualFlowRate = 1.2
+                #self.pumpPWM = 1400
+##                currTime = time.time()
+##                deltaTime = currTime - self.debugTime
+##                if deltaTime < 50:
+##                    self.reqFlowRate = min(1.2, 0.6+ 0.2*deltaTime)
+##                elif deltaTime < 30:
+##                    self.reqFlowRate = 0.4
+##                elif deltaTime < 50:
+##                    self.reqFlowRate = 1.2
+##                elif deltaTime < 60:
+##                    self.reqFlowRate = 0.6
+##                else:
+##                    self.debugTime = currTime
+                self.reqFlowRate = 1.2
+                    
+                self.calc_pump_pwm(actualFlowRate)
+
+                #self.pumpPWM = 1400
             else:
                 self.nozzPWM = self.nozzMinPWM
                 self.pumpPWM = self.pumpAbsMinPWM
                 
         # update the pwm in DCU
         self.update_pwm(mavConnection, mavutil, msgList, lock)
-        
+        actualFlowRate = self.reqFlowRate
         # update the remaining payload
+        print "flowrate",dataStorageAgri['actualFlowRate'], self.reqFlowRate, self.nozzPWM, ",", self.pumpPWM 
+        print "Rem Payload", dataStorageAgri['remainingPayload']
+        self.remainingPayload = dataStorageAgri['remainingPayload']
         self.calc_remaining_payload(actualFlowRate)
         with lock:
             dataStorageAgri['remainingPayload'] = self.remainingPayload
@@ -140,11 +164,25 @@ class AgriPayload:
             self.reqFlowRate = self.pumpMinFlowRate
             
     def calc_pump_pwm(self, actualFlowRate):
-#        if abs(self.reqFlowRate - actualFlowRate) > 0.1:
-#            pumpPWM = self.pumpPWM + 1 * (self.reqFlowRate - actualFlowRate)
-        pumpPWM = self.pumpMinPWM + int(float(self.pumpMaxPWM - self.pumpMinPWM)*float(self.reqFlowRate - self.pumpMinFlowRate)/float(self.pumpMaxFlowRate - self.pumpMinFlowRate))
+        if abs(self.reqFlowRate - actualFlowRate) > 0.25:
+            pumpPWM = int(self.pumpPWM + 100 * (self.reqFlowRate - actualFlowRate))
+        elif abs(self.reqFlowRate - actualFlowRate) > 0.1:
+            pumpPWM = int(self.pumpPWM + 50 * (self.reqFlowRate - actualFlowRate))
+        elif abs(self.reqFlowRate - actualFlowRate) > 0.02:
+            pumpPWM = int(self.pumpPWM + 30 * (self.reqFlowRate - actualFlowRate))
+        else:
+            pumpPWM = self.pumpPWM
+#        pumpPWM = self.pumpMinPWM + int(float(self.pumpMaxPWM - self.pumpMinPWM)*float(self.reqFlowRate - self.pumpMinFlowRate)/float(self.pumpMaxFlowRate - self.pumpMinFlowRate))
         
         self.pumpPWM = pumpPWM
+        #print self.pumpPWM, self.reqFlowRate, actualFlowRate
+##        with open('flow_log1', 'a') as f:
+##            f.write('%f, %f, %f\n'%(self.pumpPWM, self.reqFlowRate, actualFlowRate))
+
+        if self.pumpPWM > self.pumpMaxPWM:
+            self.pumpPWM = self.pumpMaxPWM
+        if self.pumpPWM < self.pumpMinPWM:
+            self.pumpPWM = self.pumpMinPWM
         
     def calc_nozz_pwm(self, actualRPM):
         
@@ -292,7 +330,7 @@ class PIBStatus:
         self.timer = time.time()
         
         # Nozzle configuration
-        self.nozzleConfiguration = 0b00111100
+        self.nozzleConfiguration = 0b00000000
         
         # Initialize
         self.init()
@@ -308,7 +346,7 @@ class PIBStatus:
                                              parity=serial.PARITY_ODD,
                                              stopbits=serial.STOPBITS_ONE,
                                              bytesize=serial.EIGHTBITS,
-                                             timeout=0.1)
+                                             timeout=1)
                     break
                 except KeyboardInterrupt:
                     raise KeyboardInterrupt
@@ -318,7 +356,9 @@ class PIBStatus:
         if not dataStorageCommon['isSITL']:
             # read the data
             data = self.ser.readline()
-            
+            self.ser.reset_input_buffer()
+
+
             # update the status
             self.decode_data(data)
             
@@ -326,13 +366,16 @@ class PIBStatus:
             self.update_veh_data(dataStorageAgri, lock)
     
             # Send the nozzle configuration
-            if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
-                self.set_nozzle_config(dataStorageAgri['NozzleConfig'])
-                self.send_nozzle_config()
+            #if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
+            self.set_nozzle_config(dataStorageAgri['NozzleConfig'])
+            self.send_nozzle_config()
             
     def update_veh_data(self, dataStorageAgri, lock):
         with lock:
-            pass
+            #print ((self.status['FLOW_METER_READING'][1] - 9.3438)/84.413)
+            dataStorageAgri['actualFlowRate'] = ((self.status['FLOW_METER_READING'][1] - 9.3438)/84.413) * 2./5. - 0.07
+            if dataStorageAgri['actualFlowRate'] < 0:
+                dataStorageAgri['actualFlowRate'] = 0
 
     def decode_data(self, data):
         
@@ -343,7 +386,7 @@ class PIBStatus:
         if not data:
             if self.dataNotRecievedStartTime == 0:
                 self.dataNotRecievedStartTime = int(self.timer)
-            self.dataNotRecievedTime = int(self.timer() - self.dataNotRecievedStartTime)
+            self.dataNotRecievedTime = int(self.timer - self.dataNotRecievedStartTime)
             return
         else:
             # if data is recieved reset the counters
@@ -354,18 +397,15 @@ class PIBStatus:
         extractedData = self.extract_data(data)
         
         # process data only if something is there in the data
-        if extractedData:
-            if (len(extractedData) is 20):
-                self.update_data(extractedData)
-            
+        if extractedData:            
             if (len(extractedData) is not 3):
                 
                 # Check LRC
                 lrc = self.calc_lrc(data)
-                if (lrc is extractedData[-2]):
+                if (lrc == extractedData[-2]):
                     self.errorNow['INVALID_LRC_RPI'] = False
                     
-                    ##self.update_data(extractedData)
+                    self.update_data(extractedData)
                 else:
                     self.errorNow['INVALID_LRC_RPI'] = True
             else:
@@ -379,7 +419,7 @@ class PIBStatus:
 
         
     def extract_data(self, data):
-        acceptedLengths = [36,3]
+        acceptedLengths = [38,3]
         dataLength = len(data)
         
         # Reject data with
@@ -393,7 +433,8 @@ class PIBStatus:
                 extractedData = struct.unpack('cbc', data)
                 return extractedData
             else:
-                extractedData = struct.unpack('cchhhhhhhhhhhhhhhhBc', data)
+                #extractedData = struct.unpack('cchhhhhhhhhhhhhhhhhBc', data)
+                extractedData = struct.unpack('ccHHHHHHHHHHHHHHHHHBc', data)
                 return extractedData
                 
         else:
@@ -414,11 +455,16 @@ class PIBStatus:
     
     def update_data(self, extractedData):
         # Recheck data length
-        if len(extractedData) is 20:
+        if len(extractedData) is 21:
             self.status['ATOMIZER_RPM'] = extractedData[2:8]
             self.status['ATOMIZER_CURRENT'] = np.asarray(extractedData[8:14])/100.
             self.status['PUMP_CURRENT'] = np.asarray(extractedData[14:16])/100.
             self.status['FLOW_METER_READING'] = extractedData[16:18]
+            #print "temp,",extractedData[18]
+            #print self.status['ATOMIZER_RPM']
+            #print self.status['ATOMIZER_CURRENT']
+            #print self.status['PUMP_CURRENT']
+            #print "fmreading", self.status['FLOW_METER_READING'][1]
             
     def set_nozzle_config(self, val):
         # check value is withing 1 byte limit of int
@@ -433,7 +479,60 @@ class PIBStatus:
                 lrc = self.calc_lrc(data)
                 packedData = struct.pack('cbbbc', '$', self.functionCode['MSG3'], self.nozzleConfiguration, lrc, '\n')
                 self.ser.write(packedData)
-        
+
+##class FlowSensor:
+##    def __init__(self, pin=2):
+##        self.pin = pin
+##        self.count = 0
+##        self.countList60 = [0]*300
+##        self.countList = [0]*10
+##        self.fileName = str(time.time())
+##        if not dataStorageCommon['isSITL']:
+##            self.pi = pigpio.pi()
+##            self.pi.set_mode(self.pin, pigpio.INPUT)
+##            self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
+##    
+##    def counter(self,g,l,t):
+##        self.count = self.count + 1
+##        
+##    def calc_flow_rate(self, dataStorageAgri, lock):
+##        count = self.count
+##        self.count = 0
+##        actualFlowrate = 0
+##        if count > 6:
+##            self.countList60[:-1] = self.countList60[1:]
+##            self.countList60[-1] = count
+##            self.countList[:-1] = self.countList[1:]
+##            self.countList[-1] = count
+##            #print sum(self.countList60), sum(self.countList), self.countList
+##            
+####            with open(self.fileName, 'a') as f:
+####                f.write('%d'%sum(self.countList60))
+####                f.write('\n')
+##            a5Hz = 55.448
+##            a1Hz = a5Hz/5
+##            a05Hz = a5Hz/10
+##            b = -68.483
+##            flowRate5Hz = a5Hz*self.countList[-1] + b
+##            
+##            flowRate1Hz = a1Hz*(sum(self.countList[5:])) + b
+##            flowRate05Hz = a05Hz*(sum(self.countList[:])) + b
+##            
+##            sortedCountList1Hz = copy.deepcopy(self.countList[5:])
+##            sortedCountList05Hz = copy.deepcopy(self.countList[:])
+##            #print sum(sortedCountList05Hz)
+##            sortedCountList1Hz.sort()
+##            sortedCountList05Hz.sort()
+##            #print self.countList
+##            actualFlowrate = flowRate5Hz
+##            if abs(sortedCountList1Hz[0]-sortedCountList1Hz[-1]) < 3:
+##                actualFlowrate = flowRate1Hz
+##            if abs(sortedCountList05Hz[0]-sortedCountList05Hz[-1]) < 3:
+##                actualFlowrate = flowRate05Hz
+##            #print "flowrate", flowRate5Hz/1000., flowRate1Hz/1000., flowRate05Hz/1000., self.countList
+##        with lock:
+##            dataStorageAgri['actualFlowRate'] = 0.99*actualFlowrate/1000.
+                
         
 class OnlineHealthMonitor:
     def __init__(self):

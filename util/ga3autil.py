@@ -11,6 +11,7 @@ from gacommonutil import ScheduleTask, handle_common_message, schedule_common_ta
 from ga3apayloadutil import PIBStatus, AgriPayload
 import numpy as np
 from os import path
+import sys
 
 # Empty data stroage for reference
 dataStorageAgri ={'vx': 0,
@@ -18,35 +19,43 @@ dataStorageAgri ={'vx': 0,
                   'vz': 0,
                   'currentMode': 'STABILIZE',
                   'currentWP': 0,
-                  'startWP': 2,
-                  'endWP': 10,
+                  'startWP': 1,
+                  'endWP': 2,
                   'NozzleConfig': 0b00111100,
                   'actualNozzRPM': 0,
                   'actualFlowRate': 0,
                   'testing': False,
-                  'remainingPayload': 0,
+                  'remainingPayload': 15,
                   'currentLat': 0,
                   'currentLon': 0,
                   'RTLLat': -200,
                   'RTLLon': -200,
                   'RTLWP': 0}
 
-def set_data_stream(mavConnection):
+def set_data_stream(mavConnection, msgList, lock):
+    print "requested"
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
     # don't change that as it affects other vehicles as well
     
     # request data to be sent at the given rate
     # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
-
-    #mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1)
-    #mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1)
-    mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1)
-    mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1)
-    #mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1)
-    mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 2, 1)
-    #mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1)
-    #mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1)
-    mavConnection.mav.request_data_stream_send(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 1, 1)
+    
+    with lock:
+        # stop data which are coming automatically to stop recieving unnecessary messeges
+        # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
+    
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
+        
+        
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 10, 1))
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 1, 1))
 
 def handle_sensor(schTaskList, dataStorageAgri, lock):
     # Handle sensors that are common to all vehicles like ADSB
@@ -54,9 +63,11 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
     
     # Initialize Sensor handling class
     pibStatus = PIBStatus('/dev/ttyDCU')
+    #flowSensor = FlowSensor()
     
     # Schedule the tasks
-    schTaskList.append(ScheduleTask(0.2, pibStatus.update, dataStorageAgri, lock))
+    schTaskList.append(ScheduleTask(0.05, pibStatus.update, dataStorageAgri, lock))
+    #schTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate, dataStorageAgri, lock))
 
 def handle_messeges(recieved_msg, lock):
     global dataStorageAgri
@@ -80,9 +91,14 @@ def handle_messeges(recieved_msg, lock):
                 dataStorageAgri['testing'] = False
             return
         
-        if recieved_msg.get_type() == "DATA32":
-            dataStorageAgri['startWP'] = recieved_msg.data[0]
-            dataStorageAgri['endWP'] = recieved_msg.data[1]
+        if recieved_msg.get_type() == "GA3A_PAYLOAD_COMMAND":
+            print recieved_msg
+            if recieved_msg.set_payload > -1:
+                dataStorageAgri['remainingPayload'] = recieved_msg.set_payload
+            if recieved_msg.start_wp > 0:
+                dataStorageAgri['startWP'] = recieved_msg.start_wp
+            if recieved_msg.end_wp > recieved_msg.start_wp:
+                dataStorageAgri['endWP'] = recieved_msg.end_wp
             return
             
 
@@ -107,7 +123,7 @@ def update(mavConnection, lock):
     #################################################################################
     
     # set data stream rate for this vehicle
-    set_data_stream(mavConnection)
+    set_data_stream(mavConnection, msgList, lock)
 
     # USE THREADING LOCK PROPERLY TO PREVENT RACE CONDITION AND DEADLOCK
 
@@ -164,18 +180,19 @@ def update(mavConnection, lock):
             
             dataStorageAgri['currentMode'] = mavConnection.flightmode
             
-            print dataStorageAgri['testing']
+            
             
             # update the required flow rate to the agri payload handlere
             agriPayload.update(dataStorageAgri, mavConnection, mavutil, msgList, lock)
             
             # send the data to GCS
             data = np.zeros(64, np.uint8)
-            #msg = mavutil.mavlink.MAVLink_ga3a_payload_status_message(0, 0, dataStorageAgri['remainingPayload'], dataStorageAgri['RTLLat'], dataStorageAgri['RTLLon'], dataStorageAgri['RTLWP'])
-            msg = mavutil.mavlink.MAVLink_data64_message(1,64,data)
+            msg = mavutil.mavlink.MAVLink_ga3a_payload_status_message(0, 0, dataStorageAgri['remainingPayload'], dataStorageAgri['RTLLat'], dataStorageAgri['RTLLon'], dataStorageAgri['RTLWP'])
+            #msg = mavutil.mavlink.MAVLink_data64_message(1,64,data)
             with lock:
                 msgList.append(msg)
-                
+
+            sys.stdout.flush()
 #            print mavConnection.target_system, mavConnection.target_component
             
             #msg = mavutil.mavlink.MAVLink_data16_message(1, 5, [123]*16)
