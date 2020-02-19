@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 ### BEGIN INIT INFO
 # Provides:       mavproxy_startup
 # Required-Start: $network $remote_fs $syslog
@@ -9,9 +9,31 @@
 ### END INIT INFO
 
 sleep 10
-export MAVLINK20="1"
+sudo pigpiod
+export MAVLINK20="0"
+cd /home/pi/Desktop/pymavlink_log
 
-cd /home/pi/Desktop/pymavlink/logs/
-/usr/bin/python /home/pi/Desktop/pymavlink/pymavlink_main.py --vehicle GA3 > log 2>err &
+name_log=log
+if [[ -e $name_log ]] ; then
+    i=0
+    while [[ -e $name_log-$i ]] ; do
+        let i++
+    done
+    name_log=$name_log-$i
+fi
+name_err=err
+if [[ -e $name_err ]] ; then
+    i=0
+    while [[ -e $name_err-$i ]] ; do
+        let i++
+    done
+    name_err=$name_err-$i
+fi
+
+#cp test_log last_test_log
+#cp test_err last_test_err
+#/usr/local/bin/mavproxy.py --master=/dev/serial0 --baudrate 921600 --out 192.168.168.200:14550 --daemon > test_log 2>test_err &
+#/usr/bin/python /home/pi/Desktop/pymavlink_main.py --vehicle GA3A > test_log 2>test_err &
+/usr/bin/python /home/pi/Desktop/pymavlink_main.py --vehicle GA3A > "$name_log" 2>"$name_err" &
 
 exit 0

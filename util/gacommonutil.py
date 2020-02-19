@@ -44,7 +44,7 @@ def create_mavlink_connection(sitl):
                                                            source_component=10)
             else:
                 # Need to provide the serial port and baudrate
-                mavConnection = mavutil.mavlink_connection('/dev/serial0',
+                mavConnection = mavutil.mavlink_connection('/dev/ttyS0',#'/dev/ttyPixhawk',
                                                            baud=921600,
                                                            source_system=1,
                                                            source_component=10)
@@ -55,10 +55,8 @@ def create_mavlink_connection(sitl):
             if mavConnection is not None:
                 mavConnection.close()
             
-
     # wait for the heartbeat msg to find the system ID
     mavConnection.wait_heartbeat()
-
     return mavConnection
 
 # Pymavlink recieveng loop
@@ -74,7 +72,7 @@ def recieving_loop(threadKill, mavConnection, vehutil, lock):
         try:
             # Recieve the messages
             recieved = mavConnection.recv_match()
-    
+
             # If empty message ignore
             if recieved is not None:
                 # debug
@@ -121,7 +119,8 @@ class ScheduleTask(object):
 # Common data for all vehicles
 dataStorageCommon={'rc6': None,
                    'isSITL': False,
-                   'sitlType': None}
+                   'sitlType': None,
+                   'vehArmed':False}
 
 # overall pause switch for stopping companion computer to send any commands to autopilot
 shouldPause = False
@@ -170,6 +169,14 @@ def handle_common_message(recieved_msg, lock):
         if recieved_msg.get_type() == "RC_CHANNELS":
             dataStorageCommon['rc6'] = recieved_msg.chan6_raw
             return
+        
+        if recieved_msg.get_type() == "HEARTBEAT":
+            if recieved_msg.autopilot == 3:
+                if (recieved_msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0:
+                    dataStorageCommon['vehArmed'] = True
+                else:
+                    dataStorageCommon['vehArmed'] = False
+                return
         
 # handle common sensors
 def handle_common_sensors(schTaskList, lock):

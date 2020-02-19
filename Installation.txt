@@ -1,3 +1,6 @@
+# Creating copy of the SD Card
+sudo dbus-launch piclone
+
 # Settings for connections
 1. Proper static IP in /etc/dhcpcd.conf
 2. Wifi connection setting in /etc/wpa-supplicant/wpa-supplicant.conf
