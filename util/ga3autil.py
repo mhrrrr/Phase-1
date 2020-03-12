@@ -17,10 +17,14 @@ import sys
 dataStorageAgri ={'vx': 0,
                   'vy': 0,
                   'vz': 0,
+                  'pitch': 0,
+                  'roll': 0,
+                  'yaw': 0,
                   'currentMode': 'STABILIZE',
                   'currentWP': 0,
                   'startWP': 1,
                   'endWP': 2,
+                  'missionYaw': 0,
                   'NozzleConfig': 0b00111100,
                   'actualNozzRPM': 0,
                   'actualFlowRate': 0,
@@ -33,8 +37,8 @@ dataStorageAgri ={'vx': 0,
                   'RTLLat': -200,
                   'RTLLon': -200,
                   'RTLWP': 0,
-                  'clearanceAlt': 10,
-                  'missionAlt': 3,
+                  'clearanceAlt': 1000, #cm
+                  'missionAlt': 300,  #cm
                   'missionOn': False,
                   'resumeOn': False,
                   'resumeState': -1}
@@ -54,13 +58,13 @@ def set_data_stream(mavConnection, msgList, lock):
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
         
         
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 5, 1))
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 5, 1))
 
@@ -79,6 +83,11 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
 def handle_messeges(recieved_msg, lock):
     global dataStorageAgri
     with lock:
+        if recieved_msg.get_type() == "ATTITUDE":
+            dataStorageAgri['pitch'] = recieved_msg.pitch
+            dataStorageAgri['roll'] = recieved_msg.roll
+            dataStorageAgri['yaw'] = recieved_msg.yaw
+            
         if recieved_msg.get_type() == "GLOBAL_POSITION_INT":
             dataStorageAgri['vx'] = 0.01*recieved_msg.vx
             dataStorageAgri['vy'] = 0.01*recieved_msg.vy
@@ -100,22 +109,19 @@ def handle_messeges(recieved_msg, lock):
             return
         
         if recieved_msg.get_type() == "GA3A_PAYLOAD_COMMAND":
-            if recieved_msg.set_payload > -1:
+            if recieved_msg.set_payload > 0:
                 dataStorageAgri['remainingPayload'] = recieved_msg.set_payload
             if recieved_msg.start_wp > 0 and recieved_msg.end_wp > recieved_msg.start_wp:
                 dataStorageAgri['startWP'] = recieved_msg.start_wp
                 dataStorageAgri['endWP'] = recieved_msg.end_wp
+                if recieved_msg.mission_alt > 100:
+                    dataStorageAgri['missionAlt'] = recieved_msg.mission_alt
+                dataStorageAgri['missionYaw'] = recieved_msg.mission_yaw
                 dataStorageAgri['missionOn'] = True
                 dataStorageAgri['RTLLat'] = -200
                 dataStorageAgri['RTLLon'] = -200
                 dataStorageAgri['RTLWP'] = 0
-                with open('agri_mission_file', 'w') as f:
-                    f.write('%d %d %d %d %d %d'%(int(dataStorageAgri['missionOn']),
-                                                 dataStorageAgri['startWP'],
-                                                 dataStorageAgri['endWP'],
-                                                 dataStorageAgri['RTLLat'], 
-                                                 dataStorageAgri['RTLLon'], 
-                                                 dataStorageAgri['RTLWP']))
+                write_mission_file()
             return
         
         if recieved_msg.get_type() == "GA3A_RESUME_CMD":
@@ -145,7 +151,8 @@ def distance(lat1, lon1, lat2, lon2):
     return d
     
 def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resumeSendingCounter):
-    print resumeSendingCounter, dataStorageAgri['resumeOn'], dataStorageAgri['resumeState']
+    sendCount = 10
+    print "resume", resumeSendingCounter, dataStorageAgri['resumeOn'], dataStorageAgri['resumeState']
     if dataStorageAgri['resumeOn']:
         # First change to GUIDED mode
         if dataStorageAgri['resumeState'] == 0:
@@ -153,7 +160,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 1
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                    4) # GUIDED
@@ -168,7 +175,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 2
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
                                                                        mavConnection.target_component,
                                                                        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, # command
@@ -195,7 +202,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 3
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
                                                                        mavConnection.target_component,
                                                                        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, # command
@@ -211,13 +218,14 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                     with lock:
                         msgList.append(msg)
                 return
-            
+        
+        # Goto Clearance Altitude
         if dataStorageAgri['resumeState'] == 3:
-            if dataStorageAgri['terrainAlt'] > (dataStorageAgri['clearanceAlt']-1):
+            if dataStorageAgri['terrainAlt'] > (dataStorageAgri['clearanceAlt']/100-1):
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 4
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant) 
                                                                                          mavConnection.target_system,
                                                                                          mavConnection.target_component,
@@ -225,7 +233,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                                                                                          0b110111111000, # Command Mask, Only position command
                                                                                          dataStorageAgri['currentLat'], # LAT
                                                                                          dataStorageAgri['currentLon'], # LON
-                                                                                         dataStorageAgri['clearanceAlt'],    # Alt
+                                                                                         dataStorageAgri['clearanceAlt']/100,    # Alt
                                                                                          0,     # vx
                                                                                          0,     # vy
                                                                                          0,     # vz
@@ -239,14 +247,36 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                         msgList.append(msg)
                 return
         
-        # Guide to Top of the RTL point
+        # Align heading to mission heading
         if dataStorageAgri['resumeState'] == 4:
-            if distance(dataStorageAgri['RTLLat']/1e7, dataStorageAgri['RTLLon']/1e7, dataStorageAgri['currentLat']/1e7, dataStorageAgri['currentLon']/1e7) < 1:
+            if abs(dataStorageAgri['yaw']*180/3.14-dataStorageAgri['missionYaw']) < 5:
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 5
             else:
-                if resumeSendingCounter[0] < 5:
-                    print "imhere"
+                if resumeSendingCounter[0] < sendCount:
+                    msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
+                                                                       mavConnection.target_component,
+                                                                       mavutil.mavlink.MAV_CMD_CONDITION_YAW, # command
+                                                                       0,                               # confirmation
+                                                                       dataStorageAgri['missionYaw'],   # param1 (Angle respect to North)
+                                                                       30,                              # param2 (rate deg/s)
+                                                                       1,                               # param3 (Clockwise)
+                                                                       0,                               # param4 (Absolute frame. North is 0)
+                                                                       0,                               # param5
+                                                                       0,                               # param6
+                                                                       0)                               # param7
+                    resumeSendingCounter[0] = resumeSendingCounter[0] + 1
+                    with lock:
+                        msgList.append(msg)
+                return
+        
+        # Guide to Top of the RTL point
+        if dataStorageAgri['resumeState'] == 5:
+            if distance(dataStorageAgri['RTLLat']/1e7, dataStorageAgri['RTLLon']/1e7, dataStorageAgri['currentLat']/1e7, dataStorageAgri['currentLon']/1e7) < 1:
+                resumeSendingCounter[0] = 0
+                dataStorageAgri['resumeState'] = 6
+            else:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant) 
                                                                                          mavConnection.target_system,
                                                                                          mavConnection.target_component,
@@ -254,7 +284,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                                                                                          0b110111111000, # Command Mask, Only position command
                                                                                          dataStorageAgri['RTLLat'], # LAT
                                                                                          dataStorageAgri['RTLLon'], # LON
-                                                                                         dataStorageAgri['clearanceAlt'],    # Alt
+                                                                                         dataStorageAgri['clearanceAlt']/100,    # Alt
                                                                                          0,     # vx
                                                                                          0,     # vy
                                                                                          0,     # vz
@@ -268,13 +298,13 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                         msgList.append(msg)
                 return
 
-        # Guide to Actual point
-        if dataStorageAgri['resumeState'] == 5:
-            if dataStorageAgri['terrainAlt'] < (dataStorageAgri['missionAlt']+1):
+        # Come down to Actual point
+        if dataStorageAgri['resumeState'] == 6:
+            if dataStorageAgri['terrainAlt'] < (dataStorageAgri['missionAlt']/100+1):
                 resumeSendingCounter[0] = 0
-                dataStorageAgri['resumeState'] = 6
+                dataStorageAgri['resumeState'] = 7
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant) 
                                                                                          mavConnection.target_system,
                                                                                          mavConnection.target_component,
@@ -282,7 +312,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                                                                                          0b110111111000, # Command Mask, Only position command
                                                                                          dataStorageAgri['RTLLat'], # LAT
                                                                                          dataStorageAgri['RTLLon'], # LON
-                                                                                         dataStorageAgri['missionAlt'],    # Alt
+                                                                                         dataStorageAgri['missionAlt']/100,    # Alt
                                                                                          0,     # vx
                                                                                          0,     # vy
                                                                                          0,     # vz
@@ -296,13 +326,13 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                         msgList.append(msg)
                 return
             
-        # Guide to Actual point
-        if dataStorageAgri['resumeState'] == 6:
+        # Set Current Waypoint
+        if dataStorageAgri['resumeState'] == 7:
             if dataStorageAgri['currentWP'] == dataStorageAgri['RTLWP']:
                 resumeSendingCounter[0] = 0
-                dataStorageAgri['resumeState'] = 7
+                dataStorageAgri['resumeState'] = 8
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_mission_set_current_message(mavConnection.target_system,
                                                                               mavConnection.target_component,
                                                                               dataStorageAgri['RTLWP'])
@@ -312,13 +342,13 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                 return
 
         # Engage AUTO mission
-        if dataStorageAgri['resumeState'] == 7:
+        if dataStorageAgri['resumeState'] == 8:
             if mavConnection.flightmode == "AUTO":
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeOn'] = False
                 dataStorageAgri['resumeState'] = -1
             else:
-                if resumeSendingCounter[0] < 5:
+                if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                    3) # AUTO
@@ -326,6 +356,17 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                     with lock:
                         msgList.append(msg)
                 return
+            
+def write_mission_file():
+    with open('agri_mission_file', 'w') as f:
+        f.write('%d %d %d %d %d %d %d %d'%(int(dataStorageAgri['missionOn']),
+                                       dataStorageAgri['startWP'],
+                                       dataStorageAgri['endWP'],
+                                       dataStorageAgri['missionAlt'],
+                                       dataStorageAgri['missionYaw'],
+                                       dataStorageAgri['RTLLat'], 
+                                       dataStorageAgri['RTLLon'], 
+                                       dataStorageAgri['RTLWP']))
         
 def update(mavConnection, lock):
     ############################### Defining Variables ##############################
@@ -372,14 +413,16 @@ def update(mavConnection, lock):
         with open('agri_mission_file', 'r') as f:
             for line in f:
                 data = line.split()
-                if len(data) == 6:
+                if len(data) == 8:
                     with lock:
                         dataStorageAgri['missionOn'] = bool(int(data[0]))
                         dataStorageAgri['startWP'] = int(data[1])
                         dataStorageAgri['endWP'] = int(data[2])
-                        dataStorageAgri['RTLLat'] = int(data[3])
-                        dataStorageAgri['RTLLon'] = int(data[4])
-                        dataStorageAgri['RTLWP'] = int(data[5])
+                        dataStorageAgri['missionAlt'] = int(data[3])
+                        dataStorageAgri['missionYaw'] = int(data[4])
+                        dataStorageAgri['RTLLat'] = int(data[5])
+                        dataStorageAgri['RTLLon'] = int(data[6])
+                        dataStorageAgri['RTLWP'] = int(data[7])
                 break
     resumeSendingCounter = [0]
     ####################################################################################
@@ -394,32 +437,22 @@ def update(mavConnection, lock):
             
 #            print mavConnection.flightmode
             ############################# Sequential Tasks ###############################
-            # Mission Status
+            # Rewrite mission file in case of mission is over
             if dataStorageAgri['currentWP'] > dataStorageAgri['endWP'] and (dataStorageAgri['RTLWP']>0):
                 if dataStorageAgri['missionOn']:
                     dataStorageAgri['RTLLat'] = -200
                     dataStorageAgri['RTLLon'] = -200
                     dataStorageAgri['RTLWP'] = 0
-                    with open('agri_mission_file', 'w') as f:
-                        f.write('%d %d %d %d %d %d'%(int(dataStorageAgri['missionOn']),
-                                                     dataStorageAgri['startWP'],
-                                                     dataStorageAgri['endWP'],
-                                                     dataStorageAgri['RTLLat'], 
-                                                     dataStorageAgri['RTLLon'], 
-                                                     dataStorageAgri['RTLWP']))
+                    write_mission_file()
                     
+            
+            # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
             if mavConnection.flightmode is 'RTL' and dataStorageAgri['currentMode'] is 'AUTO':
                 with lock:
                     dataStorageAgri['RTLLat'] = dataStorageAgri['currentLat']
                     dataStorageAgri['RTLLon'] = dataStorageAgri['currentLon']
                     dataStorageAgri['RTLWP'] = dataStorageAgri['currentWP']
-                with open('agri_mission_file', 'w') as f:
-                    f.write('%d %d %d %d %d %d'%(int(dataStorageAgri['missionOn']),
-                                                 dataStorageAgri['startWP'],
-                                                 dataStorageAgri['endWP'],
-                                                 dataStorageAgri['RTLLat'], 
-                                                 dataStorageAgri['RTLLon'], 
-                                                 dataStorageAgri['RTLWP']))
+                write_mission_file()
             
             # Resume Mission Handling
             resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resumeSendingCounter)

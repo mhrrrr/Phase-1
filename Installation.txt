@@ -1,4 +1,5 @@
 # Creating copy of the SD Card
+sudo cp ./.Xauthority /root/
 sudo dbus-launch piclone
 
 # Settings for connections
