@@ -27,7 +27,7 @@ class AgriPayload:
         
         # pump parameters
         self.pumpMaxPWM = 1999
-        self.pumpMinPWM = 1100
+        self.pumpMinPWM = 1200
         self.pumpAbsMinPWM = 1000
         self.pumpMaxFlowRate = 1.4                  # in ltr/min
         self.pumpMinFlowRate = 0                  # in ltr/min
@@ -60,14 +60,17 @@ class AgriPayload:
 
         # PID Pump
         self.pumpP = 50.
-        self.pumpI = 5.
-        self.pumpIMax = 1.
-        self.pumpD = 10.
+        self.pumpI = 10.
+        self.pumpIMax = 3.
+        self.pumpD = 20.
         self.pumpOldError = 0.
         self.pumpIntError = 0.
         
         # Time related
         self.time = time.time()
+        
+        # Payload Over Counter
+        self.payloadOverStartTime = time.time()
 
         # Debug Timer
         self.debugTime = time.time()
@@ -107,6 +110,18 @@ class AgriPayload:
             self.shouldSpraying = True
             # Set correct top speed of vehicle
             self.set_vehicle_max_speed(mavConnection, mavutil, msgList, lock)
+            
+            # Payload Over RTL
+            if dataStorageAgri['actualFlowRate'] < 0.1 and self.reqFLowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
+                if (time.time() - self.payloadOverStartTime) > 2:
+                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
+                                                                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                   6) # RTL
+                    with lock:
+                        msgList.append(msg)
+            else:
+                self.payloadOverStartTime = time.time()
+            
         else:
             # Allow sending max speed again to vehicle if the shouldSpraying state have changed
             if self.shouldSpraying:
@@ -206,7 +221,7 @@ class AgriPayload:
 ##            pumpPWM = int(self.pumpPWM + 50 * (self.reqFlowRate - actualFlowRate))
 ##        else:
 ##            pumpPWM = self.pumpPWM
-#        pumpPWM = self.pumpMinPWM + int(float(self.pumpMaxPWM - self.pumpMinPWM)*float(self.reqFlowRate - self.pumpMinFlowRate)/float(self.pumpMaxFlowRate - self.pumpMinFlowRate))
+
         # P
         error = (self.reqFlowRate - actualFlowRate)
         pumpPWM = int(self.pumpPWM + self.pumpP * error)
@@ -229,10 +244,6 @@ class AgriPayload:
         
         
         self.pumpPWM = pumpPWM
-        #print self.pumpPWM, self.reqFlowRate, actualFlowRate
-##        with open('flow_log1', 'a') as f:
-##            f.write('%f, %f, %f\n'%(self.pumpPWM, self.reqFlowRate, actualFlowRate))
-
         if self.pumpPWM > self.pumpMaxPWM:
             self.pumpPWM = self.pumpMaxPWM
         if self.pumpPWM < self.pumpMinPWM:
@@ -427,7 +438,7 @@ class PIBStatus:
             self.decode_data(data)
             
             # transfer data to dataStorageAgri
-            self.update_veh_data(dataStorageAgri, lock)
+            #self.update_veh_data(dataStorageAgri, lock)
     
             # Send the nozzle configuration
             #if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
@@ -548,40 +559,33 @@ class FlowSensor:
     def __init__(self, pin=2):
         self.pin = pin
         self.count = 0
-        self.countList60 = [0]*300
         self.countList = [0]*10
         self.fileName = str(time.time())
         if not dataStorageCommon['isSITL']:
             self.pi = pigpio.pi()
             self.pi.set_mode(self.pin, pigpio.INPUT)
             self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
-    
+   
     def counter(self,g,l,t):
         self.count = self.count + 1
-        
+       
     def calc_flow_rate(self, dataStorageAgri, lock):
         count = self.count
         self.count = 0
         actualFlowrate = 0
         if count > 6:
-            self.countList60[:-1] = self.countList60[1:]
-            self.countList60[-1] = count
             self.countList[:-1] = self.countList[1:]
             self.countList[-1] = count
-            #print sum(self.countList60), sum(self.countList), self.countList
-            
-##            with open(self.fileName, 'a') as f:
-##                f.write('%d'%sum(self.countList60))
-##                f.write('\n')
-            a5Hz = 55.448
+            print "count,", sum(self.countList[5:])
+            a5Hz = 17.195 * 5
             a1Hz = a5Hz/5
             a05Hz = a5Hz/10
-            b = -68.483
+            b = -139.97
             flowRate5Hz = a5Hz*self.countList[-1] + b
-            
+        
             flowRate1Hz = a1Hz*(sum(self.countList[5:])) + b
             flowRate05Hz = a05Hz*(sum(self.countList[:])) + b
-            
+
             sortedCountList1Hz = copy.deepcopy(self.countList[5:])
             sortedCountList05Hz = copy.deepcopy(self.countList[:])
             #print sum(sortedCountList05Hz)
@@ -594,9 +598,11 @@ class FlowSensor:
             if abs(sortedCountList05Hz[0]-sortedCountList05Hz[-1]) < 3:
                 actualFlowrate = flowRate05Hz
             #print "flowrate", flowRate5Hz/1000., flowRate1Hz/1000., flowRate05Hz/1000., self.countList
+            #actualFlowrate = flowRate05Hz
         with lock:
-            dataStorageAgri['actualFlowRate'] = 1.04*actualFlowrate/1000.
-                
+            dataStorageAgri['actualFlowRate'] = 0.98*actualFlowrate/1000.
+            #print "ActualFR," , dataStorageAgri['actualFlowRate']
+                 
         
 class OnlineHealthMonitor:
     def __init__(self):
