@@ -13,6 +13,7 @@ from gacommonutil import dataStorageCommon
 import copy
 if not dataStorageCommon['isSITL']:
     import pigpio
+import logging
 
 class AgriPayload:
     def __init__(self):        
@@ -99,9 +100,9 @@ class AgriPayload:
         
         # Are we testing
         testing = dataStorageAgri['testing']
-        #print testing
+
         # check whether we should be spraying
-        print "WP", dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode
+        logging.info("WP, %d, %d, %d, %s"%(dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode))
         if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] > dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
             # Allow sending max speed again to vehicle if the shouldSpraying state have changed
             if not self.shouldSpraying:
@@ -112,7 +113,7 @@ class AgriPayload:
             self.set_vehicle_max_speed(mavConnection, mavutil, msgList, lock)
             
             # Payload Over RTL
-            if dataStorageAgri['actualFlowRate'] < 0.1 and self.reqFLowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
+            if actualFlowRate < 0.1 and self.reqFLowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
                 if (time.time() - self.payloadOverStartTime) > 2:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
@@ -188,12 +189,15 @@ class AgriPayload:
         self.update_pwm(mavConnection, mavutil, msgList, lock)
 ##        actualFlowRate = self.reqFlowRate
         # update the remaining payload
-        print "FlowRate", ",",dataStorageAgri['actualFlowRate'], ",", self.reqFlowRate, ",", self.nozzPWM, ",", self.pumpPWM 
-        print "RemPayload", ",", dataStorageAgri['remainingPayload']
+        
         self.remainingPayload = dataStorageAgri['remainingPayload']
         self.calc_remaining_payload(actualFlowRate)
         with lock:
             dataStorageAgri['remainingPayload'] = self.remainingPayload
+            
+        logging.info("FlowRate, %f, %f"%(self.reqFlowRate, actualFlowRate))
+        logging.info("FlowPWM, %d, %d"%(self.nozzPWM, self.pumpPWM))
+        logging.info("RemPayload, %f"%(self.remainingPayload))
         
     def calc_flow_rate(self, speed):
         # sanity check of speed
@@ -232,7 +236,7 @@ class AgriPayload:
         pumpPWM = int(pumpPWM + self.pumpD * dError)
 
         # I
-        self.pumpIntError = self.pumpIntError + error
+        self.pumpIntError = self.pumpIntError + error * self.dt
         if (self.pumpI * self.pumpIntError) > self.pumpIMax:
             self.pumpIntError = self.pumpIMax/self.pumpI
 
@@ -240,8 +244,7 @@ class AgriPayload:
             self.pumpIntError = -self.pumpIMax/self.pumpI
         pumpPWM = int(pumpPWM + self.pumpI * self.pumpIntError)
 
-        print "PID", ",", error, ",", self.pumpIntError , ",", self.pumpP * error, ",", self.pumpI * self.pumpIntError, ",", self.pumpD * dError
-        
+        logging.debug("PID, %f, %f, %f, %f, %f"%(error, self.pumpIntError, self.pumpP * error, self.pumpI * self.pumpIntError, self.pumpD * dError))
         
         self.pumpPWM = pumpPWM
         if self.pumpPWM > self.pumpMaxPWM:
@@ -447,7 +450,6 @@ class PIBStatus:
             
     def update_veh_data(self, dataStorageAgri, lock):
         with lock:
-            #print ((self.status['FLOW_METER_READING'][1] - 9.3438)/84.413)
             dataStorageAgri['actualFlowRate'] = ((self.status['FLOW_METER_READING'][1] - 9.3438)/84.413) * 2./5. - 0.07
             if dataStorageAgri['actualFlowRate'] < 0:
                 dataStorageAgri['actualFlowRate'] = 0
@@ -485,7 +487,7 @@ class PIBStatus:
                     self.errorNow['INVALID_LRC_RPI'] = True
             else:
                 if extractedData[1] == 2:
-                    print("message reached PIB")
+                    logging.info("message reached PIB")
                 else:
                     for key in self.errorList.keys():
                         if self.errorList[key] == extractedData[1]:
@@ -535,11 +537,27 @@ class PIBStatus:
             self.status['ATOMIZER_CURRENT'] = np.asarray(extractedData[8:14])/100.
             self.status['PUMP_CURRENT'] = np.asarray(extractedData[14:16])/100.
             self.status['FLOW_METER_READING'] = extractedData[16:18]
-            print "temp,",extractedData[18]
-            print "rpm,",self.status['ATOMIZER_RPM']
-            print "acurr,",self.status['ATOMIZER_CURRENT']
-            print "pcurr,",self.status['PUMP_CURRENT']
-            #print "fmreading", self.status['FLOW_METER_READING'][1]
+            logging.info("Temp, %f"%(extractedData[18]))
+            logging.info("RPM, %f, %f, %f, %f, %f, %f"
+                         %(self.status['ATOMIZER_RPM'][0], 
+                           self.status['ATOMIZER_RPM'][1], 
+                           self.status['ATOMIZER_RPM'][2], 
+                           self.status['ATOMIZER_RPM'][3], 
+                           self.status['ATOMIZER_RPM'][4], 
+                           self.status['ATOMIZER_RPM'][5]))
+            logging.info("ACURR, %f, %f, %f, %f, %f, %f"
+                         %(self.status['ATOMIZER_CURRENT'][0], 
+                           self.status['ATOMIZER_CURRENT'][1], 
+                           self.status['ATOMIZER_CURRENT'][2], 
+                           self.status['ATOMIZER_CURRENT'][3], 
+                           self.status['ATOMIZER_CURRENT'][4], 
+                           self.status['ATOMIZER_CURRENT'][5]))
+            logging.info("PCURR, %f, %f"
+                         %(self.status['PUMP_CURRENT'][0], 
+                           self.status['PUMP_CURRENT'][1]))
+            logging.info("FMReading, %f, %f"
+                         %(self.status['FLOW_METER_READING'][0], 
+                           self.status['FLOW_METER_READING'][1]))
             
     def set_nozzle_config(self, val):
         # check value is withing 1 byte limit of int
@@ -576,7 +594,8 @@ class FlowSensor:
         if count > 6:
             self.countList[:-1] = self.countList[1:]
             self.countList[-1] = count
-            print "count,", sum(self.countList[5:])
+            
+            logging.info("count, %s"%(','.join([str(elem) for elem in self.countList]) ))
             a5Hz = 17.195 * 5
             a1Hz = a5Hz/5
             a05Hz = a5Hz/10
@@ -588,21 +607,15 @@ class FlowSensor:
 
             sortedCountList1Hz = copy.deepcopy(self.countList[5:])
             sortedCountList05Hz = copy.deepcopy(self.countList[:])
-            #print sum(sortedCountList05Hz)
             sortedCountList1Hz.sort()
             sortedCountList05Hz.sort()
-            #print self.countList
             actualFlowrate = flowRate5Hz
             if abs(sortedCountList1Hz[0]-sortedCountList1Hz[-1]) < 3:
                 actualFlowrate = flowRate1Hz
             if abs(sortedCountList05Hz[0]-sortedCountList05Hz[-1]) < 3:
                 actualFlowrate = flowRate05Hz
-            #print "flowrate", flowRate5Hz/1000., flowRate1Hz/1000., flowRate05Hz/1000., self.countList
-            #actualFlowrate = flowRate05Hz
         with lock:
             dataStorageAgri['actualFlowRate'] = 0.98*actualFlowrate/1000.
-            #print "ActualFR," , dataStorageAgri['actualFlowRate']
-                 
         
 class OnlineHealthMonitor:
     def __init__(self):

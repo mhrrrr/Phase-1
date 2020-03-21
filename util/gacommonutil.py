@@ -20,10 +20,11 @@ import time
 from pymavlink import mavutil
 from threading import Timer
 import serial
+import logging
 
 # mavlink connection create
 def create_mavlink_connection(sitl):
-    print 0
+    logging.info("Starting Mavlink Connection")
     while True:    
         try:
             time.sleep(1)
@@ -57,6 +58,7 @@ def create_mavlink_connection(sitl):
             
     # wait for the heartbeat msg to find the system ID
     mavConnection.wait_heartbeat()
+    logging.info("Mavlink Connection Establishe")
     return mavConnection
 
 # Pymavlink recieveng loop
@@ -76,8 +78,8 @@ def recieving_loop(threadKill, mavConnection, vehutil, lock):
             # If empty message ignore
             if recieved is not None:
                 # debug
-                # print(recieved)
-    
+                # logging.debug(recieved)
+                
                 # Start storing values
                 vehutil.handle_messeges(recieved, lock)
         except serial.SerialException:

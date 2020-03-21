@@ -12,6 +12,7 @@ from ga3apayloadutil import PIBStatus, AgriPayload, FlowSensor
 import numpy as np
 from os import path
 import sys
+import logging
 
 # Empty data stroage for reference
 dataStorageAgri ={'vx': 0,
@@ -44,7 +45,6 @@ dataStorageAgri ={'vx': 0,
                   'resumeState': -1}
 
 def set_data_stream(mavConnection, msgList, lock):
-    print "requested"
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
     # don't change that as it affects other vehicles as well
     
@@ -67,6 +67,8 @@ def set_data_stream(mavConnection, msgList, lock):
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 5, 1))
+    
+    logging.info("Stream Rate have been set")
 
 def handle_sensor(schTaskList, dataStorageAgri, lock):
     # Handle sensors that are common to all vehicles like ADSB
@@ -152,7 +154,7 @@ def distance(lat1, lon1, lat2, lon2):
     
 def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resumeSendingCounter):
     sendCount = 10
-    print "resume", resumeSendingCounter, dataStorageAgri['resumeOn'], dataStorageAgri['resumeState']
+    logging.info("Resume, %d, %d, %d"%(resumeSendingCounter[0], dataStorageAgri['resumeOn'], dataStorageAgri['resumeState']))
     if dataStorageAgri['resumeOn']:
         # First change to GUIDED mode
         if dataStorageAgri['resumeState'] == 0:
@@ -435,7 +437,6 @@ def update(mavConnection, lock):
             # Prevent unnecessary resource usage by this program
             time.sleep(0.2)
             
-#            print mavConnection.flightmode
             ############################# Sequential Tasks ###############################
             # Rewrite mission file in case of mission is over
             if dataStorageAgri['currentWP'] > dataStorageAgri['endWP'] and (dataStorageAgri['RTLWP']>0):

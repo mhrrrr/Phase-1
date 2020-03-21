@@ -13,11 +13,15 @@ Created on Mon Feb 18 15:33:00 2019
 # It is allowed to create more threads in vehutil.update() if needed
 ######################################################################
 
+import os
+os.environ['MAVLINK20'] = "1"
+
 # import necessary modules
 from util.gacommonutil import recieving_loop, create_mavlink_connection, dataStorageCommon
 import threading
 import argparse
 import importlib
+import logging
 
 # handle arguments
 parser = argparse.ArgumentParser()
@@ -68,6 +72,12 @@ threads = []
 
 # Thread Kill for infinite threads
 threadKill = [[False]]      # recieving_loop
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 try:
     # start mavlink connection and get the mavConnection object
