@@ -113,7 +113,7 @@ class AgriPayload:
             self.set_vehicle_max_speed(mavConnection, mavutil, msgList, lock)
             
             # Payload Over RTL
-            if actualFlowRate < 0.1 and self.reqFLowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
+            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
                 if (time.time() - self.payloadOverStartTime) > 2:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
@@ -614,6 +614,10 @@ class FlowSensor:
                 actualFlowrate = flowRate1Hz
             if abs(sortedCountList05Hz[0]-sortedCountList05Hz[-1]) < 3:
                 actualFlowrate = flowRate05Hz
+            
+            # handling sudden spikes
+            if (flowRate5Hz/1000) > 2 and abs(flowRate5Hz/1000 - dataStorageAgri['actualFlowRate']) > 2:
+                actualFlowrate = dataStorageAgri['actualFlowRate']/0.98*1000
         with lock:
             dataStorageAgri['actualFlowRate'] = 0.98*actualFlowrate/1000.
         
