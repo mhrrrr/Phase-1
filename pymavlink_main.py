@@ -78,18 +78,20 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
 )
+# list of remaining messages to be sent
+msgList = []
 
 try:
     # start mavlink connection and get the mavConnection object
     mavConnection = create_mavlink_connection(sitl)
 
     # start read loop
-    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], mavConnection, vehutil, lock,)))
+    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], msgList, mavConnection, vehutil, lock,)))
     threads[0].start()
 	
     # Run the main calculation and updates on main thread
     # i.e. this thread
-    vehutil.update(mavConnection, lock)
+    vehutil.update(msgList, mavConnection, lock)
 
 except KeyboardInterrupt:
     # send kill signal to all threads 

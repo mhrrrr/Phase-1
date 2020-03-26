@@ -42,7 +42,11 @@ dataStorageAgri ={'vx': 0,
                   'missionAlt': 300,  #cm
                   'missionOn': False,
                   'resumeOn': False,
-                  'resumeState': -1}
+                  'resumeState': -1,
+                  'pesticidePerAcre': 5,
+                  'swath': 4,
+                  'maxFlowRate': 1.2
+                  }
 
 def set_data_stream(mavConnection, msgList, lock):
     # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
@@ -82,7 +86,7 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
     schTaskList.append(ScheduleTask(0.15, pibStatus.update, dataStorageAgri, lock))
     schTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate, dataStorageAgri, lock))
 
-def handle_messeges(recieved_msg, lock):
+def handle_messeges(recieved_msg, msgList, lock):
     global dataStorageAgri
     with lock:
         if recieved_msg.get_type() == "ATTITUDE":
@@ -108,6 +112,58 @@ def handle_messeges(recieved_msg, lock):
                 dataStorageAgri['testing'] = True
             else:
                 dataStorageAgri['testing'] = False
+            return
+        
+        if recieved_msg.get_type() == "PARAM_SET":
+            if recieved_msg.param_id == "PAYLOAD":
+                if recieved_msg.param_value > 0 and recieved_msg.param_value < 17:
+                    dataStorageAgri['remainingPayload'] = recieved_msg.param_value
+            if recieved_msg.param_id == "CLEARANCE_ALT":
+                if recieved_msg.param_value > 200 and recieved_msg.param_value < 4000:
+                    dataStorageAgri['clearanceAlt'] = recieved_msg.param_value
+            if recieved_msg.param_id == "PESTI_PER_ACRE":
+                if recieved_msg.param_value > 1 and recieved_msg.param_value < 20:
+                    dataStorageAgri['pesticidePerAcre'] = recieved_msg.param_value
+            if recieved_msg.param_id == "SWATH":
+                if recieved_msg.param_value > 1 and recieved_msg.param_value < 8:
+                    dataStorageAgri['swath'] = recieved_msg.param_value
+            if recieved_msg.param_id == "MAX_FLOW_RATE":
+                if recieved_msg.param_value > 0.3 and recieved_msg.param_value < 5:
+                    dataStorageAgri['maxFlowRate'] = recieved_msg.param_value
+            return
+        
+        if recieved_msg.get_type() == "PARAM_REQUEST_READ": 
+            if recieved_msg.param_id == "PAYLOAD":
+                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                  dataStorageAgri['remainingPayload'],
+                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                  5,
+                                                                  1)
+            if recieved_msg.param_id == "CLEARANCE_ALT":
+                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                  dataStorageAgri['clearanceAlt'],
+                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                  5,
+                                                                  2)
+            if recieved_msg.param_id == "PESTI_PER_ACRE":
+                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                  dataStorageAgri['pesticidePerAcre'],
+                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                  5,
+                                                                  3)
+            if recieved_msg.param_id == "SWATH":
+                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                  dataStorageAgri['swath'],
+                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                  5,
+                                                                  4)
+            if recieved_msg.param_id == "MAX_FLOW_RATE":
+                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                  dataStorageAgri['maxFlowRate'],
+                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                  5,
+                                                                  5)
+            msgList.append(msg)
             return
         
         if recieved_msg.get_type() == "GA3A_PAYLOAD_COMMAND":
@@ -370,11 +426,8 @@ def write_mission_file():
                                        dataStorageAgri['RTLLon'], 
                                        dataStorageAgri['RTLWP']))
         
-def update(mavConnection, lock):
+def update(msgList, mavConnection, lock):
     ############################### Defining Variables ##############################
-    
-    # list of remaining messages to be sent
-    msgList = []
    
     freq = float(100)
     

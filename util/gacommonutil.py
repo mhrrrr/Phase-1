@@ -62,7 +62,7 @@ def create_mavlink_connection(sitl):
     return mavConnection
 
 # Pymavlink recieveng loop
-def recieving_loop(threadKill, mavConnection, vehutil, lock):
+def recieving_loop(threadKill, msgList, mavConnection, vehutil, lock):
     while True:
         # stop the thread if triggered by main thread
         if threadKill[0]:
@@ -81,7 +81,7 @@ def recieving_loop(threadKill, mavConnection, vehutil, lock):
                 # logging.debug(recieved)
                 
                 # Start storing values
-                vehutil.handle_messeges(recieved, lock)
+                vehutil.handle_messeges(recieved, msgList, lock)
         except serial.SerialException:
             if mavConnection is not None:
                 mavConnection.close()

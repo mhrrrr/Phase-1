@@ -45,13 +45,8 @@ class AgriPayload:
         self.nozzType = 'Micromiser'
         self.nozzP = 0.01
         
-        # Overall Parameters
-        self.perAcrePestiscide = 5          # in ltr
-        self.swath = 4.0                    # in m
-        self.maxFlowRate = 1.2              # in ltr/min
+        # Counter to send the speed to autopilot
         self.maxSpeedSentCount = 0
-        self.sprayDensity = self.perAcrePestiscide/4047.
-        self.maxSpeed = self.maxFlowRate/60./self.swath/self.sprayDensity + 0.15
 
         # GPIO handling
         if not dataStorageCommon['isSITL']:
@@ -110,7 +105,7 @@ class AgriPayload:
                 
             self.shouldSpraying = True
             # Set correct top speed of vehicle
-            self.set_vehicle_max_speed(mavConnection, mavutil, msgList, lock)
+            self.set_vehicle_max_speed(dataStorageAgri, mavConnection, mavutil, msgList, lock)
             
             # Payload Over RTL
             if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
@@ -153,7 +148,7 @@ class AgriPayload:
         
         if self.shouldSpraying:
             # calculate flow rate
-            self.calc_flow_rate(speed)
+            self.calc_flow_rate(dataStorageAgri, speed)
             
             # calculate pwm for pump and nozzle
             self.calc_pump_pwm(actualFlowRate)
@@ -187,7 +182,7 @@ class AgriPayload:
                 
         # update the pwm in DCU
         self.update_pwm(mavConnection, mavutil, msgList, lock)
-##        actualFlowRate = self.reqFlowRate
+
         # update the remaining payload
         
         self.remainingPayload = dataStorageAgri['remainingPayload']
@@ -199,7 +194,7 @@ class AgriPayload:
         logging.info("FlowPWM, %d, %d"%(self.nozzPWM, self.pumpPWM))
         logging.info("RemPayload, %f"%(self.remainingPayload))
         
-    def calc_flow_rate(self, speed):
+    def calc_flow_rate(self, dataStorageAgri, speed):
         # sanity check of speed
         if (speed < 0):
             speed = 0
@@ -207,12 +202,13 @@ class AgriPayload:
             speed = self.maxSpeed+1
         
         # Calculate flow rate
-        self.reqFlowRate = 60*self.swath*self.sprayDensity*speed
+        sprayDensity = dataStorageAgri['pesticidePerAcre']/4047.
+        self.reqFlowRate = 60*dataStorageAgri['swath']*sprayDensity*speed
 
         
         # check flow rate limit
-        if self.reqFlowRate > self.maxFlowRate:
-            self.reqFlowRate = self.maxFlowRate
+        if self.reqFlowRate > dataStorageAgri['maxFlowRate']:
+            self.reqFlowRate = dataStorageAgri['maxFlowRate']
         if self.reqFlowRate < self.pumpMinFlowRate:
             self.reqFlowRate = self.pumpMinFlowRate
             
@@ -287,12 +283,12 @@ class AgriPayload:
             if self.nozzPWM < self.nozzMinPWM:
                 self.nozzPWM = self.nozzMinPWM
     
-    def set_vehicle_max_speed(self, mavConnection, mavutil, msgList, lock):
+    def set_vehicle_max_speed(self, dataStorageAgri, mavConnection, mavutil, msgList, lock):
         # send the message 3 times to be sure message reaches autopilot
         if (self.maxSpeedSentCount < 3):
             # calculate max speed of vehicle
-            self.sprayDensity = self.perAcrePestiscide/4047.
-            self.maxSpeed = self.maxFlowRate/60./self.swath/self.sprayDensity + 0.15
+            sprayDensity = dataStorageAgri['pesticidePerAcre']/4047.
+            self.maxSpeed = dataStorageAgri['maxFlowRate']/60./dataStorageAgri['swath']/sprayDensity + 0.15
             
             if self.maxSpeed > 8:
                 self.maxSpeed = 8
