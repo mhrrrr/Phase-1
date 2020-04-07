@@ -37,12 +37,14 @@ sudo pip install pyserial
 # for video
 sudo apt-get install gstreamer1.0-plugins-bad gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-ugly gstreamer1.0-tools libgstreamer1.0-dev libgstreamer1.0-0-dbg libgstreamer1.0-0 gstreamer1.0-omx libgstreamer-plugins-base1.0-dev gtk-doc-tools
 
+git clone https://github.com/thaytan/gst-rpicamsrc.git
 cd ~/Desktop/gst-rpicamsrc
 chmod +777 autogen.sh
 ./autogen.sh
 make
 sudo make install
 
+git clone https://github.com/GStreamer/gst-rtsp-server.git
 cd ~/Desktop/gst-rtsp-server
 chmod +777 autogen.sh
 ./autogen.sh
@@ -53,6 +55,11 @@ sudo make install
 
 # checking in gcs
 gst-launch-1.0 rtspsrc location=rtsp://192.168.2.50:8554/test latency=20 ! rtph264depay ! h264parse ! mfxh264dec ! videoconvert ! autovideosink sync=false
+
+# for audio
+/usr/bin/gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, format=F32LE, media=audio, clock-rate=44100, encoding-name=L24, encoding-params=2, channels=2, payload=96 ! rtpL24depay ! audioconvert ! alsasink sync=false
+
+gst-launch-1.0 -v directsoundsrc ! audioconvert ! rtpL24pay ! udpsink host=192.168.168.168 port=5000
 
 
 # GPIO pin access in python using pigpio

@@ -1,0 +1,15 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:       stream_startup
+# Required-Start: $network $remote_fs $syslog
+# Required-Stop:  $network $remote_fs $syslog
+# Default-Start:  2 3 4 5
+# Default-Stop:   0 1 6
+# Description:    MavProxy
+### END INIT INFO
+
+sleep 10
+
+/usr/bin/gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, format=F32LE, media=audio, clock-rate=44100, encoding-name=L24, encoding-params=2, channels=2, payload=96 ! rtpL24depay ! audioconvert ! alsasink sync=false
+
+exit 0
