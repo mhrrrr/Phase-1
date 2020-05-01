@@ -8,6 +8,8 @@
 # Description:    MavProxy
 ### END INIT INFO
 
+sleep 10
+
 /home/pi/Desktop/gst-rtsp-server/examples/test-launch "( rpicamsrc preview=false expousre-mode=1 awb=1 bitrate=1000000 keyframe-interval=15 ! video/x-h264, width=640, height=480, framerate=24/1 ! h264parse ! rtph264pay name=pay0 pt=96 )" &
 
 exit 0
