@@ -11,6 +11,12 @@ sudo dbus-launch piclone
 2. Use reference scripts in init.d
 3. update-rc.d service_name defaults
 4. update-rc.d -f apache2 remove
+Other commands to check the process
+1. grep -nrI Default-Start /etc/init.d
+2. sudo service --status-all
+
+# Changing permission
+chmod u=rwx,g=rx,o=rx serial_to_tcp
 
 # USB identification
 To know kernels
