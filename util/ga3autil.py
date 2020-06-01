@@ -166,7 +166,7 @@ def handle_messeges(recieved_msg, msgList, lock):
             msgList.append(msg)
             return
         
-        if recieved_msg.get_type() == "GA3A_PAYLOAD_COMMAND":
+        if recieved_msg.get_type() == "GA3A_MISSION_CMD":
             if recieved_msg.set_payload > 0:
                 dataStorageAgri['remainingPayload'] = recieved_msg.set_payload
             if recieved_msg.start_wp > 0 and recieved_msg.end_wp > recieved_msg.start_wp:

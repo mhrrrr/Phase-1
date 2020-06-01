@@ -1600,14 +1600,14 @@
       <field type="uint16_t[4]" name="count">count of telemetry packets received (wraps at 65535)</field>
     </message>
     <message id="5000" name="GA3A_PAYLOAD_STATUS">
-      <description>Read registers for a device</description>
+      <description>Status of Payload related activities handled by RPi</description>
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
       <field type="float" name="remain_payload" units="ltr">Remaining Payload</field>
 	  <field type="uint8_t" name="resume_button_enable" units="boolean">Resume button should be enable</field>
     </message>
-	<message id="5001" name="GA3A_PAYLOAD_COMMAND">
-      <description>Read registers for a device</description>
+	<message id="5001" name="GA3A_MISSION_CMD">
+      <description>Description of spraying mission related parameters</description>
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
 	  <field type="uint16_t" name="start_wp" units="deg e7">Waypoint from where spraying should start</field>
@@ -1616,7 +1616,7 @@
 	  <field type="uint16_t" name="mission_yaw" units="deg">Angle of mission respect to North</field>
     </message>
 	<message id="5002" name="GA3A_RESUME_CMD">
-      <description>Read registers for a device</description>
+      <description>Command to resume mission from GCS to RPi</description>
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
       <field type="uint8_t" name="do_resume" units="Boolean">Do Resume</field>
