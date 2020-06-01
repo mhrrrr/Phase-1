@@ -10,6 +10,6 @@
 
 sleep 10
 
-/usr/bin/gst-launch-1.0 udpsrc port=5000 ! application/x-rtp, media=audio, clock-rate=44100, encoding-name=L24, encoding-params=2, channels=2, payload=96 ! rtpL24depay ! audioconvert ! audio/x-raw, format=S16LE, layout=interleaved ! alsasink sync=false
+/usr/bin/gst-launch-1.0 udpsrc port=5555 caps="application/x-rtp" ! queue ! rtppcmudepay ! mulawdec ! audioconvert ! alsasink sync=false
 
 exit 0
