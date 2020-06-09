@@ -42,7 +42,7 @@ dataStorageAgri ={'vx': 0,
                   'missionAlt': 300,  #cm
                   'missionOn': False,
                   'resumeOn': False,
-                  'resumeState': -1,
+                  'resumeState': 0,
                   'pesticidePerAcre': 5,
                   'swath': 4,
                   'maxFlowRate': 1.2
@@ -184,7 +184,7 @@ def handle_messeges(recieved_msg, msgList, lock):
         
         if recieved_msg.get_type() == "GA3A_RESUME_CMD":
             if recieved_msg.do_resume == 1 and not dataStorageCommon['vehArmed'] and not dataStorageAgri['resumeOn']:
-                dataStorageAgri['resumeState'] = 0
+                dataStorageAgri['resumeState'] = 1
                 dataStorageAgri['resumeOn'] = True
             return
             
@@ -213,10 +213,10 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
     logging.info("Resume, %d, %d, %d"%(resumeSendingCounter[0], dataStorageAgri['resumeOn'], dataStorageAgri['resumeState']))
     if dataStorageAgri['resumeOn']:
         # First change to GUIDED mode
-        if dataStorageAgri['resumeState'] == 0:
+        if dataStorageAgri['resumeState'] == 1:
             if mavConnection.flightmode == "GUIDED":
                 resumeSendingCounter[0] = 0
-                dataStorageAgri['resumeState'] = 1
+                dataStorageAgri['resumeState'] = 2
             else:
                 if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
@@ -227,32 +227,32 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                         msgList.append(msg)
                 return
         
-        # Arm the vehicle
-        if dataStorageAgri['resumeState'] == 1:
-            if dataStorageCommon['vehArmed']:
-                resumeSendingCounter[0] = 0
-                dataStorageAgri['resumeState'] = 2
-            else:
-                if resumeSendingCounter[0] < sendCount:
-                    msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-                                                                       mavConnection.target_component,
-                                                                       mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, # command
-                                                                       0, # confirmation
-                                                                       1, # param1 (1 to indicate arm)
-                                                                       0, # param2 (all other params meaningless)
-                                                                       0, # param3
-                                                                       0, # param4
-                                                                       0, # param5
-                                                                       0, # param6
-                                                                       0) # param7
-                    resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-                    with lock:
-                        msgList.append(msg)
-                else:
-                    resumeSendingCounter[0] = 0
-                    dataStorageAgri['resumeState'] = -1
-                    dataStorageAgri['resumeOn'] = False
-                return
+#        # Arm the vehicle
+#        if dataStorageAgri['resumeState'] == 1:
+#            if dataStorageCommon['vehArmed']:
+#                resumeSendingCounter[0] = 0
+#                dataStorageAgri['resumeState'] = 2
+#            else:
+#                if resumeSendingCounter[0] < sendCount:
+#                    msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
+#                                                                       mavConnection.target_component,
+#                                                                       mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, # command
+#                                                                       0, # confirmation
+#                                                                       1, # param1 (1 to indicate arm)
+#                                                                       0, # param2 (all other params meaningless)
+#                                                                       0, # param3
+#                                                                       0, # param4
+#                                                                       0, # param5
+#                                                                       0, # param6
+#                                                                       0) # param7
+#                    resumeSendingCounter[0] = resumeSendingCounter[0] + 1
+#                    with lock:
+#                        msgList.append(msg)
+#                else:
+#                    resumeSendingCounter[0] = 0
+#                    dataStorageAgri['resumeState'] = -1
+#                    dataStorageAgri['resumeOn'] = False
+#                return
             
         # TakeOff
         if dataStorageAgri['resumeState'] == 2:
@@ -404,7 +404,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
             if mavConnection.flightmode == "AUTO":
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeOn'] = False
-                dataStorageAgri['resumeState'] = -1
+                dataStorageAgri['resumeState'] = 0
             else:
                 if resumeSendingCounter[0] < sendCount:
                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
@@ -514,7 +514,7 @@ def update(msgList, mavConnection, lock):
             if dataStorageAgri['resumeOn'] and mavConnection.flightmode is not 'GUIDED' and dataStorageAgri['resumeState'] > 1:
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeOn'] = False
-                dataStorageAgri['resumeState'] = -1
+                dataStorageAgri['resumeState'] = 0
                 
             # update the required flow rate to the agri payload handlere
             agriPayload.update(dataStorageAgri, mavConnection, mavutil, msgList, lock)
