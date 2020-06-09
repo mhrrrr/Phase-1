@@ -92,7 +92,10 @@ def handle_messeges(recieved_msg, msgList, lock):
         if recieved_msg.get_type() == "ATTITUDE":
             dataStorageAgri['pitch'] = recieved_msg.pitch
             dataStorageAgri['roll'] = recieved_msg.roll
-            dataStorageAgri['yaw'] = recieved_msg.yaw
+            if recieved_msg.yaw < 0:
+                dataStorageAgri['yaw'] = recieved_msg.yaw*180/3.14 + 360
+            else:
+                dataStorageAgri['yaw'] = recieved_msg.yaw*180/3.14
             
         if recieved_msg.get_type() == "GLOBAL_POSITION_INT":
             dataStorageAgri['vx'] = 0.01*recieved_msg.vx
@@ -181,7 +184,7 @@ def handle_messeges(recieved_msg, msgList, lock):
             return
         
         if recieved_msg.get_type() == "GA3A_RESUME_CMD":
-            if recieved_msg.do_resume == 1 and not dataStorageCommon['vehArmed'] and not dataStorageAgri['resumeOn']:
+            if recieved_msg.do_resume == 1 and dataStorageCommon['vehArmed'] and not dataStorageAgri['resumeOn']:
                 dataStorageAgri['resumeState'] = 1
                 dataStorageAgri['resumeOn'] = True
             return
@@ -305,7 +308,7 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
         
         # Align heading to mission heading
         if dataStorageAgri['resumeState'] == 4:
-            if abs(dataStorageAgri['yaw']*180/3.14-dataStorageAgri['missionYaw']) < 5:
+            if abs(dataStorageAgri['yaw']-dataStorageAgri['missionYaw']) < 5:
                 resumeSendingCounter[0] = 0
                 dataStorageAgri['resumeState'] = 5
             else:
