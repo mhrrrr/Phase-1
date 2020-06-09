@@ -1610,16 +1610,16 @@
       <description>Description of spraying mission related parameters</description>
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
-	  <field type="uint16_t" name="start_wp" units="deg e7">Waypoint from where spraying should start</field>
-	  <field type="uint16_t" name="end_wp" units="deg e7">Waypoint at which spraying should stop</field>
-	  <field type="uint16_t" name="mission_alt" units="m">Altitude of the mission</field>
+	  <field type="uint16_t" name="start_wp" units="number">Waypoint from where spraying should start</field>
+	  <field type="uint16_t" name="end_wp" units="number">Waypoint at which spraying should stop</field>
+	  <field type="uint16_t" name="mission_alt" units="cm">Altitude of the mission</field>
 	  <field type="uint16_t" name="mission_yaw" units="deg">Angle of mission respect to North</field>
     </message>
 	<message id="5002" name="GA3A_RESUME_CMD">
       <description>Command to resume mission from GCS to RPi</description>
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
-      <field type="uint8_t" name="do_resume" units="Boolean">Do Resume</field>
+      <field type="uint8_t" name="do_resume" units="boolean">Do Resume</field>
     </message>
   </messages>
 </mavlink>
