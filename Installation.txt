@@ -18,6 +18,9 @@ Other commands to check the process
 # Changing permission
 chmod u=rwx,g=rx,o=rx serial_to_tcp
 
+# Wifi Name change
+sudo nano /etc/hostapd/hostapd.conf
+
 # USB identification
 To know kernels
 udevadm info -a -p $(udevadm info -q path -n /dev/ttyUSB1)
