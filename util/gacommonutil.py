@@ -45,7 +45,7 @@ def create_mavlink_connection(sitl):
                                                            source_component=10)
             else:
                 # Need to provide the serial port and baudrate
-                mavConnection = mavutil.mavlink_connection('/dev/ttyUSB0',#'/dev/ttyPixhawk',
+                mavConnection = mavutil.mavlink_connection('/dev/serial0',
                                                            baud=921600,
                                                            source_system=1,
                                                            source_component=10)
