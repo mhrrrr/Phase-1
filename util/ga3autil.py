@@ -184,7 +184,6 @@ def handle_messeges(recieved_msg, msgList, lock):
             return
 
         if recieved_msg.get_type() == "GA3A_RESUME_CMD":
-            #logging.warn("Resume Command %d %d %d"%(recieved_msg.do_resume, dataStorageCommon['isFlying'], dataStorageAgri['resumeOn']))
             if recieved_msg.do_resume == 1 and not dataStorageCommon['isFlying'] and not dataStorageAgri['resumeOn']:
                 dataStorageAgri['resumeState'] = 1
                 dataStorageAgri['resumeOn'] = True
@@ -477,12 +476,16 @@ def update(msgList, mavConnection, lock):
 
 
             # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
-            if mavConnection.flightmode is 'RTL' and dataStorageAgri['currentMode'] is 'AUTO':
-                with lock:
+            with lock:
+                if mavConnection.flightmode is 'RTL' and dataStorageAgri['currentMode'] is 'AUTO':
                     dataStorageAgri['RTLLat'] = dataStorageAgri['currentLat']
                     dataStorageAgri['RTLLon'] = dataStorageAgri['currentLon']
                     dataStorageAgri['RTLWP'] = dataStorageAgri['currentWP']
-                write_mission_file()
+                    write_mission_file()
+                    
+                # Update Mode
+                dataStorageAgri['currentMode'] = mavConnection.flightmode
+                
 
             # Resume Mission Handling
             resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resumeSendingCounter)
@@ -497,7 +500,6 @@ def update(msgList, mavConnection, lock):
 
             # send the data to GCS
             resumeButtonEnable = False
-            #logging.warn("%d %d %d %d %d"%(dataStorageCommon['isFlying'], dataStorageAgri['missionOn'], dataStorageAgri['RTLWP'], dataStorageAgri['startWP'], dataStorageAgri['endWP']))
             if not dataStorageCommon['isFlying'] and dataStorageAgri['missionOn'] and dataStorageAgri['RTLWP']>dataStorageAgri['startWP'] and dataStorageAgri['RTLWP']<=dataStorageAgri['endWP']:
                 resumeButtonEnable = True
             msg = mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
@@ -506,9 +508,6 @@ def update(msgList, mavConnection, lock):
                                                                       int(resumeButtonEnable))
             with lock:
                 msgList.append(msg)
-
-            # Update Mode
-            dataStorageAgri['currentMode'] = mavConnection.flightmode
 
             sys.stdout.flush()
 
