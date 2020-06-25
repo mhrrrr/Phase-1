@@ -45,8 +45,7 @@ dataStorageAgri ={'vx': 0,
                   'resumeState': 0,
                   'pesticidePerAcre': 5,
                   'swath': 4,
-                  'maxFlowRate': 1.2,
-                  'isFlying'   : False
+                  'maxFlowRate': 1.2
                   }
 
 def set_data_stream(mavConnection, msgList, lock):
@@ -63,7 +62,7 @@ def set_data_stream(mavConnection, msgList, lock):
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
 
 
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
+        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
@@ -71,7 +70,7 @@ def set_data_stream(mavConnection, msgList, lock):
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 5, 1))
         msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
         #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 5, 1))
+        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 2, 1))
 
     logging.info("Stream Rate have been set")
 
@@ -90,15 +89,6 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
 def handle_messeges(recieved_msg, msgList, lock):
     global dataStorageAgri
     with lock:
-        if recieved_msg.get_type() == "HEARTBEAT":
-            if recieved_msg.autopilot==3:
-                sysStatus = recieved_msg.system_status
-                isCurrentFlying = False
-                isCurrentFlying = sysStatus == 4
-                if(dataStorageAgri['isFlying'] and not isCurrentFlying):
-                    isCurrentFlying = sysStatus == 5 or sysStatus == 6
-                dataStorageAgri['isFlying'] = isCurrentFlying
-
         if recieved_msg.get_type() == "ATTITUDE":
             dataStorageAgri['pitch'] = recieved_msg.pitch
             dataStorageAgri['roll'] = recieved_msg.roll
@@ -194,7 +184,8 @@ def handle_messeges(recieved_msg, msgList, lock):
             return
 
         if recieved_msg.get_type() == "GA3A_RESUME_CMD":
-            if recieved_msg.do_resume == 1 and dataStorageCommon['vehArmed'] and not dataStorageAgri['resumeOn']:
+            #logging.warn("Resume Command %d %d %d"%(recieved_msg.do_resume, dataStorageCommon['isFlying'], dataStorageAgri['resumeOn']))
+            if recieved_msg.do_resume == 1 and not dataStorageCommon['isFlying'] and not dataStorageAgri['resumeOn']:
                 dataStorageAgri['resumeState'] = 1
                 dataStorageAgri['resumeOn'] = True
             return
@@ -238,32 +229,6 @@ def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resum
                         msgList.append(msg)
                 return
 
-#        # Arm the vehicle
-#        if dataStorageAgri['resumeState'] == 1:
-#            if dataStorageCommon['vehArmed']:
-#                resumeSendingCounter[0] = 0
-#                dataStorageAgri['resumeState'] = 2
-#            else:
-#                if resumeSendingCounter[0] < sendCount:
-#                    msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-#                                                                       mavConnection.target_component,
-#                                                                       mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, # command
-#                                                                       0, # confirmation
-#                                                                       1, # param1 (1 to indicate arm)
-#                                                                       0, # param2 (all other params meaningless)
-#                                                                       0, # param3
-#                                                                       0, # param4
-#                                                                       0, # param5
-#                                                                       0, # param6
-#                                                                       0) # param7
-#                    resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-#                    with lock:
-#                        msgList.append(msg)
-#                else:
-#                    resumeSendingCounter[0] = 0
-#                    dataStorageAgri['resumeState'] = -1
-#                    dataStorageAgri['resumeOn'] = False
-#                return
 
         # TakeOff
         if dataStorageAgri['resumeState'] == 2:
@@ -532,7 +497,8 @@ def update(msgList, mavConnection, lock):
 
             # send the data to GCS
             resumeButtonEnable = False
-            if not dataStorageAgri['isFlying'] and dataStorageAgri['missionOn'] and dataStorageAgri['RTLWP']>dataStorageAgri['startWP'] and dataStorageAgri['RTLWP']<=dataStorageAgri['endWP']:
+            #logging.warn("%d %d %d %d %d"%(dataStorageCommon['isFlying'], dataStorageAgri['missionOn'], dataStorageAgri['RTLWP'], dataStorageAgri['startWP'], dataStorageAgri['endWP']))
+            if not dataStorageCommon['isFlying'] and dataStorageAgri['missionOn'] and dataStorageAgri['RTLWP']>dataStorageAgri['startWP'] and dataStorageAgri['RTLWP']<=dataStorageAgri['endWP']:
                 resumeButtonEnable = True
             msg = mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
                                                                       0,

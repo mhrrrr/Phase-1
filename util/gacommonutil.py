@@ -122,7 +122,8 @@ class ScheduleTask(object):
 dataStorageCommon={'rc6': None,
                    'isSITL': False,
                    'sitlType': None,
-                   'vehArmed':False}
+                   'vehArmed':False,
+                   'isFlying':False}
 
 # overall pause switch for stopping companion computer to send any commands to autopilot
 shouldPause = False
@@ -176,6 +177,13 @@ def handle_common_message(recieved_msg, lock):
         
         if recieved_msg.get_type() == "HEARTBEAT":
             if recieved_msg.autopilot == 3:
+                sysStatus = recieved_msg.system_status
+                isCurrentFlying = False
+                isCurrentFlying = sysStatus == 4
+                if(dataStorageCommon['isFlying'] and not isCurrentFlying):
+                    isCurrentFlying = sysStatus == 5 or sysStatus == 6
+                dataStorageCommon['isFlying'] = isCurrentFlying
+                
                 if (recieved_msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0:
                     dataStorageCommon['vehArmed'] = True
                 else:
