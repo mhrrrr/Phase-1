@@ -7,8 +7,8 @@ Created on Wed Mar 06 16:02:00 2019
 
 # import necessary modules
 import time
-from gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon, mavutil, handle_common_sensors
-from ga3apayloadutil import PIBStatus, AgriPayload, FlowSensor
+from util.gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon, mavutil, handle_common_sensors
+from util.ga3apayloadutil import PIBStatus, AgriPayload, FlowSensor
 import numpy as np
 from os import path
 import sys
@@ -35,8 +35,8 @@ dataStorageAgri ={'vx': 0,
                   'currentLon': 0,
                   'relativeAlt': 0,
                   'terrainAlt': 0,
-                  'RTLLat': -200,
-                  'RTLLon': -200,
+                  'RTLLat': -2000000000,
+                  'RTLLon': -2000000000,
                   'RTLWP': 0,
                   'clearanceAlt': 1000, #cm
                   'missionAlt': 300,  #cm
@@ -86,7 +86,7 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
     schTaskList.append(ScheduleTask(0.15, pibStatus.update, dataStorageAgri, lock))
     schTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate, dataStorageAgri, lock))
 
-def handle_messeges(recieved_msg, msgList, lock):
+def handle_messeges(recieved_msg, lock):
     global dataStorageAgri
     with lock:
         if recieved_msg.get_type() == "ATTITUDE":
@@ -177,8 +177,8 @@ def handle_messeges(recieved_msg, msgList, lock):
                     dataStorageAgri['missionAlt'] = recieved_msg.mission_alt
                 dataStorageAgri['missionYaw'] = recieved_msg.mission_yaw
                 dataStorageAgri['missionOn'] = True
-                dataStorageAgri['RTLLat'] = -200
-                dataStorageAgri['RTLLon'] = -200
+                dataStorageAgri['RTLLat'] = -2000000000
+                dataStorageAgri['RTLLon'] = -2000000000
                 dataStorageAgri['RTLWP'] = 0
                 write_mission_file()
             return
@@ -469,8 +469,8 @@ def update(msgList, mavConnection, lock):
             # Rewrite mission file in case of mission is over
             if dataStorageAgri['currentWP'] > dataStorageAgri['endWP'] and (dataStorageAgri['RTLWP']>0):
                 if dataStorageAgri['missionOn']:
-                    dataStorageAgri['RTLLat'] = -200
-                    dataStorageAgri['RTLLon'] = -200
+                    dataStorageAgri['RTLLat'] = -2000000000
+                    dataStorageAgri['RTLLon'] = -2000000000
                     dataStorageAgri['RTLWP'] = 0
                     write_mission_file()
 

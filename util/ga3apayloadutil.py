@@ -9,7 +9,7 @@ import numpy as np
 import time
 import struct
 import serial
-from gacommonutil import dataStorageCommon
+from util.gacommonutil import dataStorageCommon
 import copy
 if not dataStorageCommon['isSITL']:
     import pigpio

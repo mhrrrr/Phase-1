@@ -17,7 +17,8 @@ import os
 os.environ['MAVLINK20'] = "1"
 
 # import necessary modules
-from util.gacommonutil import recieving_loop, create_mavlink_connection, dataStorageCommon
+from util.gacommonutil import recieving_loop, create_mavlink_connection, common_init
+from pymavlink import mavutil
 import threading
 import argparse
 import importlib
@@ -35,23 +36,6 @@ args = parser.parse_args()
 # define vehicle
 vehicles = ['GA3', 'GA3T', 'GA3A', 'GA3M']
 vehicle = args.vehicle
-
-# define whether it is sitl or not
-sitl = None
-
-if args.sitludp:
-    sitl = 'udp'
-    dataStorageCommon['sitlType'] = 'udp'
-    dataStorageCommon['isSITL'] = True
-if args.sitltcp:
-    sitl = 'tcp'
-    dataStorageCommon['sitlType'] = 'tcp'
-    dataStorageCommon['isSITL'] = True
-if args.sitlcom:
-    sitl = 'com'
-    dataStorageCommon['sitlType'] = 'com'
-    dataStorageCommon['isSITL'] = True
-    
 # import appropriate utility for vehicle
 if vehicle in vehicles:
     modname = "util." + vehicle.lower() + "util"
@@ -63,9 +47,24 @@ else:
     print(vehicles)
     exit()
 
+# Data Container Initialization
+statusData = vehutil.Data()
+statusData.mavutil = mavutil
+
+if args.sitludp:
+    statusData.sitlType = 'udp'
+    statusData.isSITL = True
+if args.sitltcp:
+    statusData.sitlType = 'tcp'
+    statusData.isSITL = True
+if args.sitlcom:
+    statusData.sitlType = 'com'
+    statusData.isSITL = True
+
 # master threading lock
 # try to utilise only this lock everywhere
-lock = threading.Lock()
+# USE THREADING LOCK PROPERLY TO PREVENT RACE CONDITION AND DEADLOCK
+statusData.lock = threading.Lock()
 
 # Threads list
 threads = []
@@ -79,20 +78,21 @@ logging.basicConfig(
     format='%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
 )
-# list of remaining messages to be sent
-msgList = []
 
 try:
     # start mavlink connection and get the mavConnection object
-    mavConnection = create_mavlink_connection(sitl)
+    statusData.mavConnection = create_mavlink_connection(statusData)
 
-    # start read loop
-    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], msgList, mavConnection, vehutil, lock,)))
+    # start mavlink read loop
+    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], vehutil, statusData,)))
     threads[0].start()
 	
+    # Initialize Common Tasks
+    common_init(statusData)
+    
     # Run the main calculation and updates on main thread
     # i.e. this thread
-    vehutil.update(msgList, mavConnection, lock)
+    vehutil.update(statusData)
 
 except KeyboardInterrupt:
     # send kill signal to all threads 

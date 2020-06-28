@@ -17,35 +17,35 @@ Created on Wed Mar 06 14:21:00 2019
 
 # import necessary modules
 import time
-from pymavlink import mavutil
 from threading import Timer
 import serial
 import logging
+from util.npnt import NPNT
 
 # mavlink connection create
-def create_mavlink_connection(sitl):
+def create_mavlink_connection(statusData):
     logging.info("Starting Mavlink Connection")
     while True:    
         try:
             time.sleep(1)
             mavConnection = None
             # Create the connection
-            if sitl == 'tcp':
-                mavConnection = mavutil.mavlink_connection('tcp:127.0.0.1:5760',
+            if statusData.sitlType == 'tcp':
+                mavConnection = statusData.mavutil.mavlink_connection('tcp:127.0.0.1:5760',
                                                            source_system=1,
                                                            source_component=10)
-            elif sitl == 'udp':
-                mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14551',
+            elif statusData.sitlType == 'udp':
+                mavConnection = statusData.mavutil.mavlink_connection('udp:127.0.0.1:14551',
                                                            source_system=1,
                                                            source_component=10)
-            elif sitl == 'com':
-                mavConnection = mavutil.mavlink_connection('COM28',
+            elif statusData.sitlType == 'com':
+                mavConnection = statusData.mavutil.mavlink_connection('COM28',
                                                            baud=57600,
                                                            source_system=1,
                                                            source_component=10)
             else:
                 # Need to provide the serial port and baudrate
-                mavConnection = mavutil.mavlink_connection('/dev/serial0',
+                mavConnection = statusData.mavutil.mavlink_connection('/dev/serial0',
                                                            baud=921600,
                                                            source_system=1,
                                                            source_component=10)
@@ -62,18 +62,18 @@ def create_mavlink_connection(sitl):
     return mavConnection
 
 # Pymavlink recieveng loop
-def recieving_loop(threadKill, msgList, mavConnection, vehutil, lock):
+def recieving_loop(threadKill, vehutil, statusData):
     while True:
         # stop the thread if triggered by main thread
         if threadKill[0]:
-            mavConnection.close()
+            statusData.mavConnection.close()
             break
         
         # Prevent unnecessary resource usage by this program
         time.sleep(0.01)
         try:
             # Recieve the messages
-            recieved = mavConnection.recv_match()
+            recieved = statusData.mavConnection.recv_match()
 
             # If empty message ignore
             if recieved is not None:
@@ -81,11 +81,14 @@ def recieving_loop(threadKill, msgList, mavConnection, vehutil, lock):
                 # logging.debug(recieved)
                 
                 # Start storing values
-                vehutil.handle_messeges(recieved, msgList, lock)
+                vehutil.handle_messeges(recieved, statusData)
+                # handle common mssages
+                handle_common_message(recieved, statusData)
+                
         except serial.SerialException:
-            if mavConnection is not None:
-                mavConnection.close()
-            mavConnection = create_mavlink_connection(dataStorageCommon['sitlType'])
+            if statusData.mavConnection is not None:
+                statusData.mavConnection.close()
+            statusData.mavConnection = create_mavlink_connection(statusData.sitlType)
                 
         except KeyboardInterrupt:
             # again raise keyboardinterrupt so that outer try except can also handle the clean thread exits
@@ -119,78 +122,120 @@ class ScheduleTask(object):
         self.is_running = False
 
 # Common data for all vehicles
-dataStorageCommon={'rc6': None,
-                   'isSITL': False,
-                   'sitlType': None,
-                   'vehArmed':False,
-                   'isFlying':False}
+class CommonData:
+    def __init__(self):
+        # list of remaining messages to be sent
+        self.msgList = []
+        # MavConnection storage
+        self.mavConnection = None
+        # Thread Lock
+        self.lock = None
+        # overall pause switch for stopping companion computer to send any commands to autopilot
+        self.shouldPause = False
+        # mavutil Library
+        self.mavutil = None
+        
+        self.rc6 = None
+        self.isSITL = False
+        self.sitlType = None
+        self.isArmed = False
+        self.isFlying = False
+        self.lat = -200e7
+        self.lon = -200e7
+        self.hdop = 100
+        
+        self.globalTime = 0
+        
+        # NPNT
+        self.paUploaded = True
+        self.paVerified = False
+        
+        # Threading
+        # Sceduled Task List - Make Sure tasks in task list are finite calculations
+        # Will be used for repeating certain tasks at certain repeated intervals
+        self.schTaskList = []
 
-# overall pause switch for stopping companion computer to send any commands to autopilot
-shouldPause = False
-
-def send_remaining_msg(msgList, mavConnection, lock):
-    global shouldPause
+def send_remaining_msg(statusData):
     # should be called from individual vehicle utility
-    if not shouldPause:
+    if not statusData.shouldPause:
         try:
-            with lock:
+            with statusData.lock:
                 # send all remaining messages one by one
-                for msg in msgList:
+                for msg in statusData.msgList:
                     if msg is not None:
-                        mavConnection.mav.send(msg)
-                del msgList[:]
+                        statusData.mavConnection.mav.send(msg)
+                del statusData.msgList[:]
         except serial.SerialException:
-            if mavConnection is not None:
-                mavConnection.close()
-            mavConnection = create_mavlink_connection(dataStorageCommon['sitlType'])
+            if statusData.mavConnection is not None:
+                statusData.mavConnection.close()
+            statusData.mavConnection = create_mavlink_connection(statusData.sitlType)
     else:
-        del msgList[:]
+        del statusData.msgList[:]
 
-def check_pause(lock):
-    global shouldPause
+def check_pause(statusData):
     # check if rc 6 is more than 1800
     # if yes change the flag
-    if dataStorageCommon['rc6'] is not None:
-        if dataStorageCommon['rc6'] > 1800:
-            shouldPause = True
+    if statusData.rc6 is not None:
+        if statusData.rc6 > 1800:
+            statusData.shouldPause = True
         else:
-            shouldPause = False  
+            statusData.shouldPause = False  
 
-def send_heartbeat(msgList, lock):
-    msg = mavutil.mavlink.MAVLink_heartbeat_message(18, 8, 0, 0, 0, 3)
-    with lock:
-        msgList.append(msg)
+def send_heartbeat(statusData):
+    msg = statusData.mavutil.mavlink.MAVLink_heartbeat_message(18, 8, 0, 0, 0, 3)
+    with statusData.lock:
+        statusData.msgList.append(msg)
 
 # schedule common tasks
-def schedule_common_tasks(schTaskList, msgList, lock):
+def schedule_common_tasks(statusData):
     # schTaskList.append(ScheduleTask(timeInterval, functionName, functionArguments))
-    schTaskList.append(ScheduleTask(0.1, check_pause, lock))
-    schTaskList.append(ScheduleTask(1, send_heartbeat, msgList, lock))
+    statusData.schTaskList.append(ScheduleTask(0.1, check_pause, statusData))
+    statusData.schTaskList.append(ScheduleTask(1, send_heartbeat, statusData))
+    
+    # NPNT
+    npnt = NPNT()
+    statusData.schTaskList.append(ScheduleTask(1, npnt.run, statusData))
 
 # handle common messages
-def handle_common_message(recieved_msg, lock):
-    global dataStorageCommon
-    with lock:
-        if recieved_msg.get_type() == "RC_CHANNELS":
-            dataStorageCommon['rc6'] = recieved_msg.chan6_raw
+def handle_common_message(recievedMsg, statusData):
+    with statusData.lock:
+        if recievedMsg.get_type() == "RC_CHANNELS":
+            statusData.rc6 = recievedMsg.chan6_raw
             return
         
-        if recieved_msg.get_type() == "HEARTBEAT":
-            if recieved_msg.autopilot == 3:
-                sysStatus = recieved_msg.system_status
+        if recievedMsg.get_type() == "HEARTBEAT":
+            if recievedMsg.autopilot == 3:
+                sysStatus = recievedMsg.system_status
                 isCurrentFlying = False
                 isCurrentFlying = sysStatus == 4
-                if(dataStorageCommon['isFlying'] and not isCurrentFlying):
+                if(statusData.isFlying and not isCurrentFlying):
                     isCurrentFlying = sysStatus == 5 or sysStatus == 6
-                dataStorageCommon['isFlying'] = isCurrentFlying
+                statusData.isFlying = isCurrentFlying
                 
-                if (recieved_msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0:
-                    dataStorageCommon['vehArmed'] = True
+                if (recievedMsg.base_mode & statusData.mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0:
+                    statusData.isArmed = True
                 else:
-                    dataStorageCommon['vehArmed'] = False
+                    statusData.isArmed = False
                 return
+            
+        if recievedMsg.get_type() == "GPS_RAW_INT":
+            statusData.lat = recievedMsg.lat
+            statusData.lon = recievedMsg.lon
+            statusData.hdop = recievedMsg.eph/100.
+            return
+        
+        if recievedMsg.get_type() == "SYSTEM_TIME":
+            statusData.globalTime = int(recievedMsg.time_unix_usec*1e-6)
+            return
         
 # handle common sensors
-def handle_common_sensors(schTaskList, lock):
+def handle_common_sensors(statusData):
     pass
+
+def common_init(statusData):
+    # schedule common tasks
+    schedule_common_tasks(statusData)
+    
+    # Handle sensors that are common to all vehicles like ADSB
+    handle_common_sensors(statusData)
 
