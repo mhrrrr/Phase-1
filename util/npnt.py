@@ -23,7 +23,7 @@ import json
 class NPNT():
     def __init__(self):
         self.keystore = jks.KeyStore.load("./Keystore.jks", "Sam")
-        self.permissionArtefactFileName = './permission_artifact_breach.xml'
+        self.permissionArtefactFileName = './permission_artifact_breach.xml'#permission_artifact_4.xml
         self.permissionArtefactTree = None
         self.permissionArtefactTreeRoot = None
         self.timeZone = pytz.timezone('Asia/Kolkata')
@@ -150,6 +150,17 @@ class NPNT():
                            "Longitude":self.takeOffPointLon,
                            "TimeStamp":self.takeOffTimeStamp
                            }
+            
+            self.takeOffPointLat = -200
+            self.takeOffPointLon = -200
+            self.takeOffTimeStamp = 0
+            self.landPointLat = -200
+            self.landPointLon = -200
+            self.landTimeStamp = 0
+            self.breachedLat = []
+            self.breachedLon = []
+            self.breachedTimeStamp = []
+            
         # Creating dictionary for flight log
         flightLog = {"FlightLog": {"GeofenceBreach": geoFenceBreach,
                                          "Land": landData,
@@ -220,9 +231,9 @@ class NPNT():
                         self.landPointLat = statusData.lat*1e-7
                         self.landPointLon = statusData.lon*1e-7
                         self.landTimeStamp = statusData.globalTime
-                        self.landed = True
                         self.breached = False
                         self.tookOff = False
+                        self.landed = True
                         logWriteThread = threading.Thread(self.write_log())
                         logWriteThread.start()
 
@@ -237,14 +248,14 @@ class NPNT():
                             pass
                     else:
                         #Don't allow arming
-                        self.send_npnt_mavlink_msg(statusData, False, b'GeoFence Breach')
+                        self.send_npnt_mavlink_msg(statusData, False, b'NPNT GeoFence Breach')
                         logging.info("NPNT, Outside GeoFence")
             else:
                 if self.check_permission_artifact(statusData):
                     statusData.paVerified = True
                     logging.info('NPNT, PA Verified')
                 else:
-                    self.send_npnt_mavlink_msg(statusData, False, b'Invalid PA')
+                    self.send_npnt_mavlink_msg(statusData, False, b'NPNT Invalid PA')
                     logging.info("NPNT, Invalid PA")
 
 # Class to define a fence.
