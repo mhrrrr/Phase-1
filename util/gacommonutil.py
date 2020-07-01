@@ -147,7 +147,7 @@ class CommonData:
         self.globalTime = 0
         
         # NPNT
-        self.paUploaded = True
+        self.paUploaded = False
         self.paVerified = False
         
         # Threading

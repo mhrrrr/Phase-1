@@ -19,11 +19,19 @@ import jks
 import base64, textwrap
 import threading
 import json
+import socket
+import sys
+from os import listdir
+from os import path
 
 class NPNT():
     def __init__(self):
-        self.keystore = jks.KeyStore.load("./Keystore.jks", "Sam")
-        self.permissionArtefactFileName = './permission_artifact_breach.xml'#permission_artifact_4.xml
+        self.flightLlogFolder = "./NPNT/Flight_Logs/"
+        self.paFolder = "./NPNT/Permission_Artefact/"
+        self.keyStoreFolder = "./NPNT/Key_Store/"
+        
+        self.keystore = jks.KeyStore.load(self.keyStoreFolder+"Keystore.jks", "Sam")
+        self.permissionArtefactFileName = ''
         self.permissionArtefactTree = None
         self.permissionArtefactTreeRoot = None
         self.timeZone = pytz.timezone('Asia/Kolkata')
@@ -47,8 +55,11 @@ class NPNT():
         # Lock
         self.lock = threading.Lock()
         
+        # RFM Server
+        self.rfmServer = RFMServer(self.flightLlogFolder, self.paFolder, self.keyStoreFolder)
+        
     def parse_permission_artefact(self):
-        self.permissionArtefactTree = etree.parse(self.permissionArtefactFileName)
+        self.permissionArtefactTree = etree.parse(self.paFolder + self.permissionArtefactFileName)
         self.permissionArtefactTreeRoot = self.permissionArtefactTree.getroot()
         
         # Read Permission Artifact ID
@@ -105,19 +116,27 @@ class NPNT():
             return ''.join(s)
     
     def check_permission_artifact(self, statusData):
+        if len(self.permissionArtefactFileName) == 0:
+            return False
+        
         # check Lat Lon data from autopilot are correct
         if statusData.lat > -190e7 and statusData.lon > -190e7 and statusData.hdop < 2:
             # First Parse the data
             if not self.parse_permission_artefact():
+                self.send_npnt_mavlink_msg(statusData, False, b'NPNT PA Parsing Error')
+                logging.info("NPNT, PA Parsing Error")
                 return False
             
             #Check if PA is Valid and verify signature
             if not self.verify_xml_signature():
-#                master.mav.mav_raspi_send(0, 0, 1, 0, 0, 0, 0, 0)
+                self.send_npnt_mavlink_msg(statusData, False, b'NPNT Signature Mismatch')
+                logging.info("NPNT, PA Signature Mismatch")
                 return False
             
             return True
         else:
+            self.send_npnt_mavlink_msg(statusData, False, b'NPNT no GPS Lock')
+            logging.info("NPNT, GPS Lock is not available")
             return False
     
     def within_time(self, timestamp):
@@ -163,9 +182,9 @@ class NPNT():
             
         # Creating dictionary for flight log
         flightLog = {"FlightLog": {"GeofenceBreach": geoFenceBreach,
-                                         "Land": landData,
-                                         "TakeOff":takeOffData
-                                         }
+                                   "Land": landData,
+                                   "TakeOff":takeOffData
+                                   }
             }
         # Creating json data for flight log
 #        flightLogJD = json.dumps(logDataUnsigned,  indent=4)
@@ -183,7 +202,7 @@ class NPNT():
         flightLog['Signature'] = enc.decode('ascii')
         
         # Creating file name
-        logFileName = "signed_log_" + self.permissionArtefactId + "_" + str(self.fileIndex) + "_" + ".json"
+        logFileName = self.flightLlogFolder+"signed_log_" + self.permissionArtefactId + "_" + str(self.fileIndex) + "_" + ".json"
         self.fileIndex = self.fileIndex + 1
         
         with open(logFileName, "w") as signedLogFile:
@@ -199,6 +218,10 @@ class NPNT():
         
     def run(self, statusData):
         if statusData.paUploaded:
+            if (self.permissionArtefactFileName != self.rfmServer.paFilename):
+                self.permissionArtefactFileName = self.rfmServer.paFilename
+                logging.info("%s"%self.permissionArtefactFileName)
+                statusData.paVerified = False
             if statusData.paVerified:
                 if statusData.isArmed:
                     #If we are entering this place first time record take-off
@@ -237,6 +260,7 @@ class NPNT():
                         logWriteThread = threading.Thread(self.write_log())
                         logWriteThread.start()
 
+
                     if self.fence.check_point((statusData.lat*1e-7,statusData.lon*1e-7)):
                         if self.within_time(statusData.globalTime):
                             #allow to arm
@@ -255,8 +279,164 @@ class NPNT():
                     statusData.paVerified = True
                     logging.info('NPNT, PA Verified')
                 else:
-                    self.send_npnt_mavlink_msg(statusData, False, b'NPNT Invalid PA')
-                    logging.info("NPNT, Invalid PA")
+                    statusData.paVerified = False
+        else:
+            logging.info('NPNT, PA Not Uploaded')
+            self.send_npnt_mavlink_msg(statusData, False, b'NPNT PA not Uploaded')
+            if not self.rfmServer.started:
+                rfmServerThread = threading.Thread(self.rfmServer.socket_init())
+                rfmServerThread.start()
+            if self.rfmServer.paAvailable:
+                self.permissionArtefactFileName = self.rfmServer.paFilename
+                statusData.paUploaded = True
+                
+
+class RFMServer:
+    def __init__(self, flightLogFolder, paFolder, keyFolder):
+        self.started = False
+        
+        # Connection related
+        self.serverAddress = ('192.168.168.1', 7000)
+        self.connection = None
+        self.sock = None
+        
+        #public key related global variables
+        self.publicKeyFolder = keyFolder
+        self.publicKeyFilename = 'test_key.pem'
+        
+        #flight log related global variables
+        self.flightLogFolder = flightLogFolder
+        self.fltLogReqest = False # make it false again after associated event is triggered
+        self.fltLogName = ''
+        self.fltLogFlag = False # make it false again after associated event is triggered
+        
+        #permission artifact related global variables
+        self.paFolder = paFolder
+        self.paFilename = ''
+        self.paString = '' #permission artifact string
+        self.paAvailable = False  # make it false again after associated event is triggered
+        self.paFilenameFlag = False
+        self.paFileflag = False
+        
+    # Read permission artifact and save to file as well as store in a global variable
+    # Flag g_PA_available is provided to know if ermission artifact is available to access or not, this flag shoud be checked continuosly
+    def check_and_save_pa_received_from_client(self, strdata):
+    
+        if(strdata.__contains__('$PA_START$') or self.paFileflag):
+            if(strdata.__contains__('$PA_START$')):
+                self.paString = ''
+                self.paFileflag = True
+    
+            if(self.paFileflag):
+                self.paString = self.paString + strdata
+                if(strdata.__contains__('$PA_END$')):
+                    self.paFileflag = False
+                    tok = self.paString.split('$PA_START$')
+                    if(len(tok)>1):
+                        tok = tok[1].split('$PA_END$')
+                        if(len(tok)>1):
+                            tok = tok[0]
+                            tok = tok.replace('$PA_FILENAME_START$','$PA_FILENAME_END$')
+                            tok = tok.split('$PA_FILENAME_END$')
+                            if(len(tok)>2):
+                                self.paFilename = tok[1]
+                                self.paString = tok[0] + tok[2]
+                                with open(self.paFolder+self.paFilename,'w') as pafile:
+                                    pafile.write(self.paString)
+                                self.send_status_to_client("Permission artifact receival acknowledged")
+                                self.paAvailable = True
+    
+    def check_flight_log_name_request_from_client(self, strdata):
+        if(strdata.__contains__('$REF_LOGS$')):
+            self.send_flight_log_file_names_to_client()
+    
+    def send_flight_log_file_names_to_client(self):
+        if(path.isdir(self.flightLogFolder)):
+            logList = listdir(self.flightLogFolder)
+            if(len(logList)>0):
+                logString = ','.join(logList)
+                self.connection.sendall(('$LOG_NAMES_START$'+logString+'$LOG_NAMES_END$').encode())
+                self.send_status_to_client('Flight log file names request acknowledged')
+            else:
+                self.send_status_to_client('No log files available')
+        else:
+            self.send_status_to_client('Request error')
+    
+    def check_flight_log_request_from_client(self, strdata):
+        if(strdata.__contains__('$REQ_LOG_START$')):
+            self.fltLogFlag = True
+        if(self.fltLogFlag):
+            self.fltLogName = self.fltLogName + strdata
+        if(self.fltLogFlag and strdata.__contains__('$REQ_LOG_END$')):
+            self.fltLogName = self.fltLogName.replace('$REQ_LOG_START$','')
+            self.fltLogName = self.fltLogName.replace('$REQ_LOG_END$','')
+            self.send_flight_log_to_client(self.fltLogName)
+            self.fltLogFlag = False
+            self.fltLogName = ''
+    
+    def send_flight_log_to_client(self, fltLogName):
+        if(path.isdir(self.flightLogFolder)):
+            with open(self.flightLogFolder + fltLogName ,'r') as file:
+                filedata = file.read()
+            self.send_status_to_client(fltLogName + '- file download request acknowledged')
+            self.connection.sendall(('$LOG_START$'+filedata+'$LOG_END$').encode())
+        else:
+            self.send_status_to_client('Resuest Error')
+    
+    def check_public_key_request_from_client(self, strdata):
+        if(strdata.__contains__('$REQ_KEY$')):
+            if(path.isdir(self.publicKeyFolder)):
+                if(path.isfile(self.publicKeyFolder + self.publicKeyFilename)):
+                    with open(self.publicKeyFolder + self.publicKeyFilename,'r') as file:
+                        filedata = file.read()
+                self.send_status_to_client('Public key request acknowledged')
+                self.send_public_key_to_client(filedata)
+            else:
+                self.send_status_to_client('Resuest Error')
+    
+    
+    def send_public_key_to_client(self, key):
+        self.connection.sendall(('$KEY_START$'+key+'$KEY_END$').encode())
+    
+    def send_status_to_client(self, strdata):
+        self.connection.sendall(('>>'+strdata+ '<<').encode())
+    
+    
+    def socket_init(self):
+        self.started = True
+        
+        # Create a TCP/IP socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    
+        # Bind the socket to the port
+        logging.info("RFM Server, Starting up on %s port %s" % self.serverAddress )
+        sock.bind(self.serverAddress)
+    
+        # Listen for incoming connections
+        sock.listen(1)
+    
+        while True:
+            # Wait for a connection
+            logging.info("RFM Server, Waiting for a connection")
+            self.connection, clientAddress = sock.accept()
+    
+            try:
+                logging.info("RFM Server, Connection from %s"%(str(clientAddress)))
+                # Receive the data in small chunks
+                while True:
+                    data = self.connection.recv(1024)
+    
+                    if data:
+                        self.check_and_save_pa_received_from_client(data.decode())
+                        self.check_flight_log_name_request_from_client(data.decode())
+                        self.check_public_key_request_from_client(data.decode())
+                        self.check_flight_log_request_from_client(data.decode())
+                    else:
+                        logging.info("RFM Server, No more data from %s"%(str(clientAddress)))
+                        break
+            finally:
+                # Clean up the connection
+                self.connection.close()
 
 # Class to define a fence.
 class Fence:
