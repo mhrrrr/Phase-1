@@ -17,12 +17,16 @@ import os
 os.environ['MAVLINK20'] = "1"
 
 # import necessary modules
-from util.gacommonutil import recieving_loop, create_mavlink_connection, common_init
-from pymavlink import mavutil
-import threading
 import argparse
-import importlib
 import logging
+
+# Define logging
+logging.basicConfig(
+    level=logging.INFO,
+#    level=logging.WARN,
+    format='%(asctime)s.%(msecs)03d,%(name)-12s,%(levelname)-8s,%(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+)
 
 # handle arguments
 parser = argparse.ArgumentParser()
@@ -33,72 +37,41 @@ parser.add_argument("--sitlcom", action="store_true", dest="sitlcom")
 
 args = parser.parse_args()
 
+# Handle SITL    
+sitlType = None
+if args.sitludp:
+    sitlType = 'udp'
+if args.sitltcp:
+    sitlType = 'tcp'
+if args.sitlcom:
+    sitlType = 'com'
+    
 # define vehicle
-vehicles = ['GA3', 'GA3T', 'GA3A', 'GA3M']
+vehicles = ['GA3', 'GA3A', 'Test']
 vehicle = args.vehicle
 # import appropriate utility for vehicle
 if vehicle in vehicles:
-    modname = "util." + vehicle.lower() + "util"
-    vehutil = importlib.import_module(modname)
+    if vehicle == 'GA3':
+        from util.ga3util import GA3CompanionComputer as CompanionComp
+    elif vehicle == 'GA3A':
+        from util.ga3autil import GA3ACompanionComputer as CompanionComp
+    elif vehicle == 'Test':
+        from util.testutil import TestCompanionComputer as CompanionComp
 else:
-    print("Please give valid vehicle using\n")
-    print("python pymavlink_main.py --vehicle <VehicleName>\n")
-    print("Valid Vehicle names are")
-    print(vehicles)
+    logging.error("Please give valid vehicle using")
+    logging.error("python pymavlink_main.py --vehicle <VehicleName>")
+    logging.error("Valid Vehicle names are")
+    logging.error(vehicles)
     exit()
 
-# Data Container Initialization
-statusData = vehutil.Data()
-statusData.mavutil = mavutil
-
-if args.sitludp:
-    statusData.sitlType = 'udp'
-    statusData.isSITL = True
-if args.sitltcp:
-    statusData.sitlType = 'tcp'
-    statusData.isSITL = True
-if args.sitlcom:
-    statusData.sitlType = 'com'
-    statusData.isSITL = True
-
-# master threading lock
-# try to utilise only this lock everywhere
-# USE THREADING LOCK PROPERLY TO PREVENT RACE CONDITION AND DEADLOCK
-statusData.lock = threading.Lock()
-
-# Threads list
-threads = []
-
-# Thread Kill for infinite threads
-threadKill = [[False]]      # recieving_loop
-
-logging.basicConfig(
-    level=logging.INFO,
-#    level=logging.WARN,
-    format='%(asctime)s.%(msecs)03d %(name)-12s %(levelname)-8s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
-
 try:
-    # start mavlink connection and get the mavConnection object
-    statusData.mavConnection = create_mavlink_connection(statusData)
-
-    # start mavlink read loop
-    threads.append(threading.Thread(target=recieving_loop, args=(threadKill[0], vehutil, statusData,)))
-    threads[0].start()
-	
-    # Initialize Common Tasks
-    common_init(statusData)
+    # Initialize Companion Computer
+    companionComp = CompanionComp(sitlType)
     
-    # Run the main calculation and updates on main thread
-    # i.e. this thread
-    vehutil.update(statusData)
+    # Start Companion Computer
+    companionComp.init()
 
-except KeyboardInterrupt:
-    # send kill signal to all threads 
-    for i in range(len(threadKill)):
-        threadKill[i][0] = True
-
-    # wait for them to finish
-    for i in range(len(threads)):
-        threads[i].join()
+# During debugging so that we can exit the loop
+except:
+#    logging.exception(e)
+    companionComp.kill_all_threads()

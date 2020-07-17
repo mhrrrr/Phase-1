@@ -7,8 +7,13 @@ Created on Wed Mar 06 16:02:00 2019
 
 # import necessary modules
 import time
-from util.gacommonutil import ScheduleTask, send_remaining_msg, CommonData
+from util.gacommonutil import ScheduleTask, send_remaining_msg, CommonData, CompanionComputer
 import logging
+
+class GA3CompanionComputer(CompanionComputer):
+    def __init__(self):
+        # Initialize super class
+        
 
 # Empty data stroage for reference
 class Data(CommonData):

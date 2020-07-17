@@ -31,6 +31,14 @@ class NPNT():
         self.keyStoreFolder = "./NPNT/Key_Store/"
         
         self.keystore = jks.KeyStore.load(self.keyStoreFolder+"Keystore.jks", "Sam")
+        
+        # NPNT Status
+        self.__npntAllowed = False
+        self.__npntNotAllowedReason = b''
+        
+        # PA Related
+        self.paVerified = False
+        self.paUploaded = False
         self.permissionArtefactFileName = ''
         self.permissionArtefactTree = None
         self.permissionArtefactTreeRoot = None
@@ -58,6 +66,15 @@ class NPNT():
         # RFM Server
         self.rfmServer = RFMServer(self.flightLlogFolder, self.paFolder, self.keyStoreFolder)
         
+        # Variable to kill all threads cleanly
+        self.killAllThread = threading.Event()
+    
+    def get_npnt_allowed(self):
+        return int(self.__npntAllowed)
+        
+    def get_npnt_not_allowed_reason(self):
+        return self.__npntNotAllowedReason
+    
     def parse_permission_artefact(self):
         self.permissionArtefactTree = etree.parse(self.paFolder + self.permissionArtefactFileName)
         self.permissionArtefactTreeRoot = self.permissionArtefactTree.getroot()
@@ -115,27 +132,30 @@ class NPNT():
             s+=("\n-----END RSA PRIVATE KEY-----")
             return ''.join(s)
     
-    def check_permission_artifact(self, statusData):
+    def check_permission_artifact(self, lat, lon, hdop):
         if len(self.permissionArtefactFileName) == 0:
             return False
         
         # check Lat Lon data from autopilot are correct
-        if statusData.lat > -190e7 and statusData.lon > -190e7 and statusData.hdop < 2:
+        if lat > -190e7 and lon > -190e7 and hdop < 2:
             # First Parse the data
             if not self.parse_permission_artefact():
-                self.send_npnt_mavlink_msg(statusData, False, b'NPNT PA Parsing Error')
+                self.__npntAllowed = False
+                self.__npntNotAllowedReason = b'NPNT PA Parsing Error'
                 logging.info("NPNT, PA Parsing Error")
                 return False
             
             #Check if PA is Valid and verify signature
             if not self.verify_xml_signature():
-                self.send_npnt_mavlink_msg(statusData, False, b'NPNT Signature Mismatch')
+                self.__npntAllowed = False
+                self.__npntNotAllowedReason = b'NPNT Signature Mismatch'
                 logging.info("NPNT, PA Signature Mismatch")
                 return False
             
             return True
         else:
-            self.send_npnt_mavlink_msg(statusData, False, b'NPNT no GPS Lock')
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'NPNT no GPS Lock'
             logging.info("NPNT, GPS Lock is not available")
             return False
     
@@ -210,85 +230,89 @@ class NPNT():
         
         logging.info("NPNT, Signed log file written")
         
-    def send_npnt_mavlink_msg(self, statusData, npnt_allowed, reason):
-        statusData.msgList.append(statusData.mavutil.mavlink.MAVLink_npnt_status_message(statusData.mavConnection.target_system,
-                                                                                         statusData.mavConnection.target_component,
-                                                                                         int(npnt_allowed),
-                                                                                         reason))
-        
-    def run(self, statusData):
-        if statusData.paUploaded:
+    def update(self, lat, lon, hdop, globalTime, isArmed):
+        if self.paUploaded:
             if (self.permissionArtefactFileName != self.rfmServer.paFilename):
                 self.permissionArtefactFileName = self.rfmServer.paFilename
                 logging.info("%s"%self.permissionArtefactFileName)
-                statusData.paVerified = False
-            if statusData.paVerified:
-                if statusData.isArmed:
+                self.paVerified = False
+            if self.paVerified:
+                if isArmed:
                     #If we are entering this place first time record take-off
                     if not self.tookOff:
                         logging.info("NPNT, TakeOff Point Recorded")
-                        self.takeOffPointLat = statusData.lat*1e-7
-                        self.takeOffPointLon = statusData.lon*1e-7
-                        self.takeOffTimeStamp = statusData.globalTime
+                        self.takeOffPointLat = lat*1e-7
+                        self.takeOffPointLon = lon*1e-7
+                        self.takeOffTimeStamp = globalTime
                         self.tookOff = True
                         self.landed = False
                 
                     # Handle Breach
-                    if not self.fence.check_point((statusData.lat*1e-7,statusData.lon*1e-7)): 
+                    if not self.fence.check_point((lat*1e-7,lon*1e-7)): 
                         logging.info("NPNT, Currently Breaching the Geofence")
                         self.breached = True
                         
-                    if not self.within_time(statusData.globalTime):
+                    if not self.within_time(globalTime):
                         logging.info("NPNT, Currently Breaching the Time Limit")
                         self.breached = True
                     
                     if self.breached:
-                        self.breachedLat.append(statusData.lat*1e-7)
-                        self.breachedLon.append(statusData.lon*1e-7)
-                        self.breachedTimeStamp.append(statusData.globalTime)
+                        self.breachedLat.append(lat*1e-7)
+                        self.breachedLon.append(lon*1e-7)
+                        self.breachedTimeStamp.append(globalTime)
                     
                 else:
                     #If we are entering this place after landing record the landing point
                     if not self.landed:
                         logging.info("NPNT, Landing Point Recorded")
-                        self.landPointLat = statusData.lat*1e-7
-                        self.landPointLon = statusData.lon*1e-7
-                        self.landTimeStamp = statusData.globalTime
+                        self.landPointLat = lat*1e-7
+                        self.landPointLon = lon*1e-7
+                        self.landTimeStamp = globalTime
                         self.breached = False
                         self.tookOff = False
                         self.landed = True
-                        logWriteThread = threading.Thread(self.write_log())
+                        logWriteThread = threading.Thread(target=self.write_log)
+                        logWriteThread.daemon = True
                         logWriteThread.start()
 
 
-                    if self.fence.check_point((statusData.lat*1e-7,statusData.lon*1e-7)):
-                        if self.within_time(statusData.globalTime):
+                    if self.fence.check_point((lat*1e-7,lon*1e-7)):
+                        if self.within_time(globalTime):
                             #allow to arm
-                            self.send_npnt_mavlink_msg(statusData, True, b'Go Go Go')
+                            self.__npntAllowed = True
+                            self.__npntNotAllowedReason = b'Go Go Go'
                             logging.info("NPNT, Allowing to Arm")
                         else:
                             #Don't allow arming
-                            self.send_npnt_mavlink_msg(statusData, False, b'NPNT Time Breach')
+                            self.__npntAllowed = False
+                            self.__npntNotAllowedReason = b'NPNT Time Breach'
                             pass
                     else:
                         #Don't allow arming
-                        self.send_npnt_mavlink_msg(statusData, False, b'NPNT GeoFence Breach')
+                        self.__npntAllowed = False
+                        self.__npntNotAllowedReason = b'NPNT GeoFence Breach'
                         logging.info("NPNT, Outside GeoFence")
             else:
-                if self.check_permission_artifact(statusData):
-                    statusData.paVerified = True
+                if self.check_permission_artifact(lat, lon, hdop):
+                    self.paVerified = True
                     logging.info('NPNT, PA Verified')
                 else:
-                    statusData.paVerified = False
+                    self.paVerified = False
         else:
             logging.info('NPNT, PA Not Uploaded')
-            self.send_npnt_mavlink_msg(statusData, False, b'NPNT PA not Uploaded')
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'NPNT PA not Uploaded'
             if not self.rfmServer.started:
-                rfmServerThread = threading.Thread(self.rfmServer.socket_init())
-                rfmServerThread.start()
+                self.rfmServer.start_server()
             if self.rfmServer.paAvailable:
                 self.permissionArtefactFileName = self.rfmServer.paFilename
-                statusData.paUploaded = True
+                self.paUploaded = True
+                
+    def kill_all_threads(self):
+        logging.info("NPNT killing all threads")
+        self.rfmServer.kill_all_threads()
+        self.killAllThread.set()
+        logging.info("NPNT joined all threads")
                 
 
 class RFMServer:
@@ -296,7 +320,8 @@ class RFMServer:
         self.started = False
         
         # Connection related
-        self.serverAddress = ('192.168.168.1', 7000)
+        #self.serverAddress = ('192.168.168.1', 7000)
+        self.serverAddress = ('127.0.0.1', 7000)
         self.connection = None
         self.sock = None
         
@@ -317,6 +342,11 @@ class RFMServer:
         self.paAvailable = False  # make it false again after associated event is triggered
         self.paFilenameFlag = False
         self.paFileflag = False
+        
+        self.rfmServerThread = None
+        
+        # Variable to kill all threads cleanly
+        self.killAllThread = threading.Event()
         
     # Read permission artifact and save to file as well as store in a global variable
     # Flag g_PA_available is provided to know if ermission artifact is available to access or not, this flag shoud be checked continuosly
@@ -401,29 +431,37 @@ class RFMServer:
     def send_status_to_client(self, strdata):
         self.connection.sendall(('>>'+strdata+ '<<').encode())
     
+    def start_server(self):
+        self.rfmServerThread = threading.Thread(target=self.socket_init)
+        self.rfmServerThread.start()
     
     def socket_init(self):
         self.started = True
         
         # Create a TCP/IP socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
         # Bind the socket to the port
         logging.info("RFM Server, Starting up on %s port %s" % self.serverAddress )
-        sock.bind(self.serverAddress)
+        self.sock.bind(self.serverAddress)
     
         # Listen for incoming connections
-        sock.listen(1)
+        self.sock.listen(1)
     
         while True:
             # Wait for a connection
             logging.info("RFM Server, Waiting for a connection")
-            self.connection, clientAddress = sock.accept()
-    
+            self.connection, clientAddress = self.sock.accept()
+            
+            if self.killAllThread.is_set():
+                break
+            
             try:
                 logging.info("RFM Server, Connection from %s"%(str(clientAddress)))
                 # Receive the data in small chunks
                 while True:
+                    if self.killAllThread.is_set():
+                        break
                     data = self.connection.recv(1024)
     
                     if data:
@@ -437,6 +475,16 @@ class RFMServer:
             finally:
                 # Clean up the connection
                 self.connection.close()
+    
+    def kill_all_threads(self):
+        logging.info("RFM Server killing all threads")
+        self.killAllThread.set()
+        if self.connection is None:
+            self.sock.close()
+        else:
+            self.connection.close()
+        self.rfmServerThread.join()
+        logging.info("RFM Server joined all threads")
 
 # Class to define a fence.
 class Fence:
