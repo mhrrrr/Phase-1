@@ -12,7 +12,7 @@ import cryptography
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Hash import SHA256
 from Cryptodome.Signature import pkcs1_15
-import signxml as sx
+from signxml import XMLVerifier
 from lxml import etree
 import logging
 import jks
@@ -28,18 +28,28 @@ class NPNT():
     def __init__(self):
         self.flightLlogFolder = "./NPNT/Flight_Logs/"
         self.paFolder = "./NPNT/Permission_Artefact/"
+        self.verifiedPAFolder = "./NPNT/Permission_Artefact/Verified/"
         self.keyStoreFolder = "./NPNT/Key_Store/"
+        self.rfmInfoFile = "./NPNT/rfm_info"
         
         self.keystore = jks.KeyStore.load(self.keyStoreFolder+"Keystore.jks", "Sam")
         
         # NPNT Status
         self.__npntAllowed = False
-        self.__npntNotAllowedReason = b''
+        self.__npntNotAllowedReason = b'RPAS Tampered'
+        
+        # State Machine NPNT
+        self.state = VehicleTamperedState()
+        
+        # Pre Checks
+        self.vtdsCheck = True
+        self.state = self.state.on_event("VTDS code recieved")
+        self.uin = None
+        self.parse_rfm_info()
         
         # PA Related
-        self.paVerified = False
-        self.paUploaded = False
         self.permissionArtefactFileName = ''
+        self.pauin = None
         self.permissionArtefactTree = None
         self.permissionArtefactTreeRoot = None
         self.timeZone = pytz.timezone('Asia/Kolkata')
@@ -51,9 +61,6 @@ class NPNT():
         self.landPointLat = -200
         self.landPointLon = -200
         self.landTimeStamp = 0
-        self.breached = False
-        self.tookOff = False
-        self.landed = True
         self.breachedLat = []
         self.breachedLon = []
         self.breachedTimeStamp = []
@@ -66,6 +73,8 @@ class NPNT():
         # RFM Server
         self.rfmServer = RFMServer(self.flightLlogFolder, self.paFolder, self.keyStoreFolder)
         
+        
+        
         # Variable to kill all threads cleanly
         self.killAllThread = threading.Event()
     
@@ -75,12 +84,26 @@ class NPNT():
     def get_npnt_not_allowed_reason(self):
         return self.__npntNotAllowedReason
     
+    def parse_rfm_info(self):
+        with open(self.rfmInfoFile,'r') as rfmInfo:
+            for line in rfmInfo:
+                data = line.split(",")
+                if data[0].strip() == "UIN":
+                    if len(data) == 2:
+                        self.uin = data[1].strip()
+    
     def parse_permission_artefact(self):
+        if len(self.permissionArtefactFileName) == 0:
+            return False
+        
         self.permissionArtefactTree = etree.parse(self.paFolder + self.permissionArtefactFileName)
         self.permissionArtefactTreeRoot = self.permissionArtefactTree.getroot()
         
         # Read Permission Artifact ID
         self.permissionArtefactId = self.permissionArtefactTreeRoot.get("permissionArtifactId")
+        
+        # Read UIN from PA
+        self.pauin = self.permissionArtefactTreeRoot.find(".//UADetails").get("uinNo")
         
         #read Coordinates from PA   
         self.fence = Fence()
@@ -106,15 +129,11 @@ class NPNT():
         return True
     
     def verify_xml_signature(self):
-        """
-        Verify the signature of a given xml file against a certificate
-        :param path xml_file: path to the xml file for verification
-        :return: bool: the success of verification
-        """
-        certificate = self.read_cert()
+        #certificate = self.read_cert()
+        cert = self.permissionArtefactTreeRoot.findtext(".//{http://www.w3.org/2000/09/xmldsig#}X509Certificate")
         
         try:
-            sx.XMLVerifier().verify(data=self.permissionArtefactTreeRoot, require_x509=True, x509_cert=certificate).signed_xml
+            XMLVerifier().verify(data=self.permissionArtefactTreeRoot, require_x509=True, x509_cert=cert).signed_xml
             # The file signature is authentic
             return True
         except cryptography.exceptions.InvalidSignature:
@@ -131,33 +150,12 @@ class NPNT():
             s+=("\r\n".join(textwrap.wrap(base64.b64encode(pk.pkey).decode('ascii'), 64)))
             s+=("\n-----END RSA PRIVATE KEY-----")
             return ''.join(s)
-    
-    def check_permission_artifact(self, lat, lon, hdop):
-        if len(self.permissionArtefactFileName) == 0:
-            return False
         
-        # check Lat Lon data from autopilot are correct
-        if lat > -190e7 and lon > -190e7 and hdop < 2:
-            # First Parse the data
-            if not self.parse_permission_artefact():
-                self.__npntAllowed = False
-                self.__npntNotAllowedReason = b'NPNT PA Parsing Error'
-                logging.info("NPNT, PA Parsing Error")
-                return False
-            
-            #Check if PA is Valid and verify signature
-            if not self.verify_xml_signature():
-                self.__npntAllowed = False
-                self.__npntNotAllowedReason = b'NPNT Signature Mismatch'
-                logging.info("NPNT, PA Signature Mismatch")
-                return False
-            
-            return True
-        else:
-            self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'NPNT no GPS Lock'
-            logging.info("NPNT, GPS Lock is not available")
-            return False
+    def save_verified_pa(self):
+        outFileName = self.verifiedPAFolder + "verified_" + str() + ".xml"
+        
+        self.permissionArtefactTree.write(outFileName)
+        
     
     def within_time(self, timestamp):
         if timestamp > 0:
@@ -165,7 +163,6 @@ class NPNT():
             if self.flightStartTime<=currentTime and currentTime<=self.flightEndTime:
                 return True
             else:
-                logging.info("NPNT, Outside Time Limit")
                 return False
         else:
             logging.info("NPNT, Not getting time from autopilot")
@@ -228,86 +225,168 @@ class NPNT():
         with open(logFileName, "w") as signedLogFile:
             json.dump(flightLog, signedLogFile, indent=4)
         
-        logging.info("NPNT, Signed log file written")
-        
     def update(self, lat, lon, hdop, globalTime, isArmed):
-        if self.paUploaded:
-            if (self.permissionArtefactFileName != self.rfmServer.paFilename):
-                self.permissionArtefactFileName = self.rfmServer.paFilename
-                logging.info("%s"%self.permissionArtefactFileName)
-                self.paVerified = False
-            if self.paVerified:
-                if isArmed:
-                    #If we are entering this place first time record take-off
-                    if not self.tookOff:
-                        logging.info("NPNT, TakeOff Point Recorded")
-                        self.takeOffPointLat = lat*1e-7
-                        self.takeOffPointLon = lon*1e-7
-                        self.takeOffTimeStamp = globalTime
-                        self.tookOff = True
-                        self.landed = False
-                
-                    # Handle Breach
-                    if not self.fence.check_point((lat*1e-7,lon*1e-7)): 
-                        logging.info("NPNT, Currently Breaching the Geofence")
-                        self.breached = True
-                        
-                    if not self.within_time(globalTime):
-                        logging.info("NPNT, Currently Breaching the Time Limit")
-                        self.breached = True
-                    
-                    if self.breached:
-                        self.breachedLat.append(lat*1e-7)
-                        self.breachedLon.append(lon*1e-7)
-                        self.breachedTimeStamp.append(globalTime)
-                    
-                else:
-                    #If we are entering this place after landing record the landing point
-                    if not self.landed:
-                        logging.info("NPNT, Landing Point Recorded")
-                        self.landPointLat = lat*1e-7
-                        self.landPointLon = lon*1e-7
-                        self.landTimeStamp = globalTime
-                        self.breached = False
-                        self.tookOff = False
-                        self.landed = True
-                        logWriteThread = threading.Thread(target=self.write_log)
-                        logWriteThread.daemon = True
-                        logWriteThread.start()
-
-
-                    if self.fence.check_point((lat*1e-7,lon*1e-7)):
-                        if self.within_time(globalTime):
-                            #allow to arm
-                            self.__npntAllowed = True
-                            self.__npntNotAllowedReason = b'Go Go Go'
-                            logging.info("NPNT, Allowing to Arm")
-                        else:
-                            #Don't allow arming
-                            self.__npntAllowed = False
-                            self.__npntNotAllowedReason = b'NPNT Time Breach'
-                            pass
-                    else:
-                        #Don't allow arming
-                        self.__npntAllowed = False
-                        self.__npntNotAllowedReason = b'NPNT GeoFence Breach'
-                        logging.info("NPNT, Outside GeoFence")
-            else:
-                if self.check_permission_artifact(lat, lon, hdop):
-                    self.paVerified = True
-                    logging.info('NPNT, PA Verified')
-                else:
-                    self.paVerified = False
-        else:
-            logging.info('NPNT, PA Not Uploaded')
+        if str(self.state) is str(VehicleNotRegisteredState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'NPNT PA not Uploaded'
+            self.__npntNotAllowedReason = b'RPAS Tampered'
+            
+            logging.info("NPNT, RPAS Tampered")
+                
+        if str(self.state) is str(VehicleNotRegisteredState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'RPAS is not registered'
+            
+            if self.uin:
+                self.state = self.state.on_event("UIN available")
+                logging.info("NPNT, RPAS is registered")
+            
+            logging.info("NPNT, RPAS is not registered")
+            
+        # Handling New PA in Between
+        if self.rfmServer.paAvailable:
+            if self.permissionArtefactFileName != self.rfmServer.paFilename:
+                self.permissionArtefactFileName = self.rfmServer.paFilename
+                self.state = self.state.on_event("PA Uploaded")
+                logging.info("NPNT, PA Uploaded")
+                
+        if str(self.state) is str(PANotUploadedState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'PA Not Uploaded'
+            
             if not self.rfmServer.started:
                 self.rfmServer.start_server()
-            if self.rfmServer.paAvailable:
-                self.permissionArtefactFileName = self.rfmServer.paFilename
-                self.paUploaded = True
+            
+            logging.info("NPNT, PA Not Uploaded")
                 
+        if str(self.state) is str(PANotParsedState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'PA Not Parsed'
+            
+            if self.parse_permission_artefact():
+                self.state = self.state.on_event("PA Parsed")
+                logging.info("NPNT, PA Parsed")
+            else:
+                logging.info("NPNT, PA Not Parsed")
+                
+        if str(self.state) is str(UINNotCorrectState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'UIN Not Correct'
+            
+            if self.uin == self.pauin:
+                self.state = self.state.on_event("UIN Matched")
+                logging.info("NPNT, UIN Matched")
+            else:
+                logging.info("NPNT, UIN Not Correct")
+                
+        if str(self.state) is str(PANotAuthenticState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'PA not Authentic'
+            
+            if self.verify_xml_signature():
+                self.state = self.state.on_event("PA Signature Verified")
+                logging.info("NPNT, PA Signature Verified")
+            else:
+                logging.info("NPNT, PA not Authentic")
+                
+        if str(self.state) is str(PANotStoredState()):
+            self.save_verified_pa()
+            
+            self.state = self.state.on_event("PA Stored")
+            
+            logging.info("NPNT, Store PA")
+        
+        if str(self.state) is str(OutsideTimelimitState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'Outside Time Limit'
+            
+            if lat > -190e7 and lon > -190e7 and hdop < 2:
+                if self.within_time(globalTime):
+                    self.state = self.state.on_event("Within Allowed Time")
+                    logging.info("NPNT, Within TimeLimit")
+                else:
+                    logging.info("NPNT, Outside Time Limit")    
+            else:
+                self.__npntNotAllowedReason = b'No GPS Lock'
+                logging.info("NPNT, No GPS Lock")
+                
+        if str(self.state) is str(OutsideGeofenceState()):
+            self.__npntAllowed = False
+            self.__npntNotAllowedReason = b'Outside GeoFence'
+            
+            if lat > -190e7 and lon > -190e7 and hdop < 2:
+                if self.fence.check_point((lat*1e-7,lon*1e-7)):
+                    self.state = self.state.on_event("Within Geofence")
+                    logging.info("NPNT, Within Geofence")
+                else:
+                    logging.info("NPNT, Outside GeoFence")    
+            else:
+                self.__npntNotAllowedReason = b'No GPS Lock'
+                logging.info("NPNT, No GPS Lock")
+                
+        if str(self.state) is str(ArmAllowedState()):
+            self.__npntAllowed = True
+            self.__npntNotAllowedReason = b'Go go go'
+            
+            if isArmed:
+                self.state = self.state.on_event("Armed")
+            else:
+                self.state = self.state.on_event("Not Armed")
+                
+            logging.info("NPNT, Allowing to Arm")    
+            
+        if str(self.state) is str(TakeoffLocationNotRecorededState()):
+            self.takeOffPointLat = lat*1e-7
+            self.takeOffPointLon = lon*1e-7
+            self.takeOffTimeStamp = globalTime  
+            
+            self.state = self.state.on_event("Takeoff location stored")
+            
+            logging.info("NPNT, TakeOff Point Recorded")
+            
+        if str(self.state) is str(FlyingState()):
+            if not self.fence.check_point((lat*1e-7,lon*1e-7)):
+                self.state = self.state.on_event("Breached")
+                logging.info("NPNT, Geofence Breach")
+                
+            if not self.within_time(globalTime):
+                self.state = self.state.on_event("Breached")
+                logging.info("NPNT, Time Breach")
+                
+            if not isArmed:
+                self.state = self.state.on_event("Landed")
+                logging.info("NPNT, Landed")
+            
+            logging.info("NPNT, Flying")
+            
+        if str(self.state) is str(FlyingBreachedState()):
+            self.breachedLat.append(lat*1e-7)
+            self.breachedLon.append(lon*1e-7)
+            self.breachedTimeStamp.append(globalTime)
+            
+            if not isArmed:
+                self.state = self.state.on_event("Landed")
+                logging.info("NPNT, Landed")
+                
+            logging.info("NPNT, Breached")
+            
+        if str(self.state) is str(LandLocationNotRecordedState()):
+            self.landPointLat = lat*1e-7
+            self.landPointLon = lon*1e-7
+            self.landTimeStamp = globalTime
+
+            self.state = self.state.on_event("Land Location Stored")
+                
+            logging.info("NPNT, Land Location Stored")
+            
+        if str(self.state) is str(FlightLogNotCreatedState()):
+            logWriteThread = threading.Thread(target=self.write_log)
+            logWriteThread.daemon = True
+            logWriteThread.start()
+            
+            self.state = self.state.on_event("Log Created")
+                
+            logging.info("NPNT, Log Created")
+
     def kill_all_threads(self):
         logging.info("NPNT killing all threads")
         self.rfmServer.kill_all_threads()
@@ -486,6 +565,248 @@ class RFMServer:
         self.rfmServerThread.join()
         logging.info("RFM Server joined all threads")
 
+class State(object):
+    """
+    We define a state object which provides some utility functions for the
+    individual states within the state machine.
+    """
+
+    def __init__(self):
+        pass
+#        logging.info('Processing current state: %s', str(self))
+
+    def on_event(self, event):
+        """
+        Handle events that are delegated to this State.
+        """
+        pass
+
+    def __repr__(self):
+        """
+        Leverages the __str__ method to describe the State.
+        """
+        return self.__str__()
+
+    def __str__(self):
+        """
+        Returns the name of the State.
+        """
+        return self.__class__.__name__
+
+# NPNT States
+class VehicleTamperedState(State):
+    """
+    State in which vehicle is tampered
+    This is the state when we power on
+    """
+    def on_event(self, event):
+        # Once we recieve code from VTDS state will move on 
+        # to not registered state
+        if event == 'VTDS code recieved':
+            return VehicleNotRegisteredState()
+
+        return self
+    
+class VehicleNotRegisteredState(State):
+    """
+    State in which UIN is not available for RPAS
+    """
+    def on_event(self, event):
+        # IF UIN is avaliable in rfminfo file then move
+        # to PA not uploaded Status
+        if event == 'UIN available':
+            return PANotUploadedState()
+
+        return self
+
+class PANotUploadedState(State):
+    """
+    State in which PA is not uploaded for RPAS
+    """
+    def on_event(self, event):
+        # If PA is uploaded then move
+        # to PA not Parsed state
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+    
+class PANotParsedState(State):
+    """
+    State in which PA is not parsed
+    """
+    def on_event(self, event):
+        # If PA is parsed then move on to 
+        # to PA not Parsed state
+        if event == 'PA Parsed':
+            return UINNotCorrectState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+    
+class UINNotCorrectState(State):
+    """
+    State in which UIN in PA and RPAS PA doesn't matches
+    """
+    def on_event(self, event):
+        # If UIN Matches move on to 
+        # to PA not Parsed state
+        if event == 'UIN Matched':
+            return PANotAuthenticState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+
+class PANotAuthenticState(State):
+    """
+    State in which PA signature is not verified
+    """
+    def on_event(self, event):
+        # If PA signature is verified then move to
+        # PA not stored
+        if event == 'PA Signature Verified':
+            return PANotStoredState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+
+class PANotStoredState(State):
+    """
+    State in which PA is not stored in memory
+    """
+    def on_event(self, event):
+        # If PA storage process is complete then move to
+        # Time Outside Limit State
+        if event == 'PA Stored':
+            return OutsideTimelimitState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+    
+class OutsideTimelimitState(State):
+    """
+    State in which current time is outside Timelimit allowed in PA
+    """
+    def on_event(self, event):
+        # If current GPS time within PA timelimit then move to
+        # Outside geofence state
+        if event == 'Within Allowed Time':
+            return OutsideGeofenceState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+    
+class OutsideGeofenceState(State):
+    """
+    State in which current location is outside geofence allowed in PA
+    """
+    def on_event(self, event):
+        # If current location within PA geofence then move to
+        # Allowed to arm
+        if event == 'Within Geofence':
+            return ArmAllowedState()
+        
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+
+        return self
+    
+class ArmAllowedState(State):
+    """
+    State in which Arming Allowed
+    """
+
+    def on_event(self, event):
+        # If vehicle actually arms
+        # Then move to flight log take off not recorded state
+        # If it is not armed move to Outside Timelimit state (for 1 Hz Loop)
+        if event == 'Armed':
+            return TakeoffLocationNotRecorededState()
+        
+        if event == 'Not Armed':
+            return OutsideTimelimitState()
+            
+        if event == 'PA Uploaded':
+            return PANotParsedState()
+        
+        return self
+    
+class TakeoffLocationNotRecorededState(State):
+    """
+    State in which takeoff location is not stored after arming
+    """
+
+    def on_event(self, event):
+        # If Takeoff Location is stored
+        # Move to  Breached check State
+        if event == 'Takeoff location stored':
+            return FlyingState()
+        
+        return self
+    
+class FlyingState(State):
+    """
+    State in which RPAS is flying
+    """
+
+    def on_event(self, event):
+        # If GeoFence is breached or time breached
+        if event == 'Breached':
+            return FlyingBreachedState()
+        
+        if event == 'Landed':
+            return LandLocationNotRecordedState()
+        
+        return self
+    
+class FlyingBreachedState(State):
+    """
+    State in which RPAS is flying after breaching either Time or Geofence
+    """
+
+    def on_event(self, event):
+        # If Landed        
+        if event == 'Landed':
+            return LandLocationNotRecordedState()
+        
+        return self
+    
+class LandLocationNotRecordedState(State):
+    """
+    State in which RPAS has landed but yet to record Land location
+    """
+
+    def on_event(self, event):
+        # If Land Location is recorded then move on to
+        # Flight log not created
+        if event == 'Land Location Stored':
+            return FlightLogNotCreatedState()
+        
+        return self
+    
+class FlightLogNotCreatedState(State):
+    """
+    State in which RFM is yet to store individual log
+    """
+
+    def on_event(self, event):
+        # If flight log is create move on to
+        # Outside Time Limit state in PA loop so that take off can be taken up
+        if event == 'Log Created':
+            return OutsideTimelimitState()
+        
+        return self
+    
 # Class to define a fence.
 class Fence:
     """

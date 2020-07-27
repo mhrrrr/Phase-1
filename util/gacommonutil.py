@@ -309,7 +309,3 @@ class MavlinkInterface(object):
         self.recievingThread.join()
         self.sendingThread.join()
         logging.info("MavlinkInterface joined all threads")
-                    
-            
-        
-    
