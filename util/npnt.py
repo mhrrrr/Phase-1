@@ -15,6 +15,7 @@ from signxml import XMLVerifier
 from lxml import etree
 import logging
 import jks
+import OpenSSL
 import base64, textwrap
 import threading
 import json
@@ -24,13 +25,20 @@ from os import path
 
 class NPNT():
     def __init__(self):
-        self.flightLlogFolder = "./NPNT/Flight_Logs/"
+        # Log Folder
+        self.flightLogFolder = "./NPNT/Flight_Logs/"
+        self.bundledFlightLogFolder = "./NPNT/Flight_Logs/Bundled/"
+        # PA Folder
         self.paFolder = "./NPNT/Permission_Artefact/"
         self.verifiedPAFolder = "./NPNT/Permission_Artefact/Verified/"
-        self.keyStoreFolder = "./NPNT/Key_Store/"
+        # KeyStore File
+        self.keyStoreFile = "./NPNT/Key_Store/Keystore.jks"
+        # PublicKey File
+        self.publicKeyFile = "./NPNT/Key_Store/rfm_key_pair.pub"
+        # RFM Information File
         self.rfmInfoFile = "./NPNT/rfm_info"
         
-        self.keystore = jks.KeyStore.load(self.keyStoreFolder+"Keystore.jks", "Sam")
+        self.keystore = jks.KeyStore.load(self.keyStoreFile, "GenAero2016")
         
         # NPNT Status
         self.__npntAllowed = False
@@ -69,12 +77,14 @@ class NPNT():
         self.lock = threading.Lock()
         
         # RFM Server
-        self.rfmServer = RFMServer(self.flightLlogFolder, self.paFolder, self.keyStoreFolder)
-        
-        
+        self.rfmServer = RFMServer(self.bundledFlightLogFolder, self.paFolder, self.publicKeyFile)
         
         # Variable to kill all threads cleanly
         self.killAllThread = threading.Event()
+        
+        # Mavlink Handling
+        self.keyRotationRequested = False
+        self.uinChangeRequested = None
     
     def get_npnt_allowed(self):
         return int(self.__npntAllowed)
@@ -89,6 +99,48 @@ class NPNT():
                 if data[0].strip() == "UIN":
                     if len(data) == 2:
                         self.uin = data[1].strip()
+                        
+    def update_uin(self):
+        with open(self.rfmInfoFile, 'r') as f:
+            data = f.readlines()
+            
+        data[3] = "UIN," + str(self.npnt.uinChangeRequested)
+        
+        with open(self.rfmInfoFile, 'r') as f:
+            data = f.writelines()
+            
+        self.parse_rfm_info()
+        
+    def key_rotation(self):
+        if len(listdir(self.verifiedPAFolder)) > 0:
+            return False
+        else:
+            # generate key
+            key = OpenSSL.crypto.PKey()
+            key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+            
+            # generate a self signed certificate
+            cert = OpenSSL.crypto.X509()
+            cert.get_subject().CN = 'generalaeronautics.com'
+            cert.set_serial_number(473289472)
+            cert.gmtime_adj_notBefore(0)
+            cert.gmtime_adj_notAfter(365*24*60*60)
+            cert.set_issuer(cert.get_subject())
+            cert.set_pubkey(key)
+            cert.sign(key, 'sha256')
+            
+            # dumping the key and cert to ASN1
+            dumped_cert = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
+            dumped_key = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_ASN1, key)
+            
+            # creating a private key entry
+            pke = jks.PrivateKeyEntry.new('RFM_Key_Pair', [dumped_cert], dumped_key, 'rsa_raw')
+            
+            # creating a jks keystore with the private key, and saving it
+            keystore = jks.KeyStore.new('jks', [pke])
+            keystore.save(self.keyStoreFile, 'GenAero2016')
+            
+            return True
     
     def parse_permission_artefact(self):
         if len(self.permissionArtefactFileName) == 0:
@@ -150,11 +202,18 @@ class NPNT():
             return ''.join(s)
         
     def save_verified_pa(self):
-        outFileName = self.verifiedPAFolder + "verified_" + str() + ".xml"
+        outFileName = self.verifiedPAFolder + "verified_" + str(self.permissionArtefactId) + "_PA.xml"
         
         self.permissionArtefactTree.write(outFileName)
         
-    
+        # Update the file index in case the same PA is uploaded after reboot
+        for fileName in listdir(self.flightLogFolder):
+            logging.info("FileName: %s %d"%(fileName, int(path.isfile(path.join(self.flightLogFolder, fileName)))))
+            if len(fileName)>0 and path.isfile(path.join(self.flightLogFolder, fileName)):
+                logging.info("Split: %d %d"%(int(fileName.split("_")[1] == self.permissionArtefactId),int(int(fileName.split("_")[2]) >= self.fileIndex)))
+                if fileName.split("_")[1] == self.permissionArtefactId and int(fileName.split("_")[2]) >= self.fileIndex:
+                    self.fileIndex = int(fileName.split("_")[2])+1
+
     def within_time(self, timestamp):
         if timestamp > 0:
             currentTime = pytz.utc.localize(datetime.utcfromtimestamp(timestamp)).astimezone(self.timeZone)
@@ -217,7 +276,7 @@ class NPNT():
         flightLog['Signature'] = enc.decode('ascii')
         
         # Creating file name
-        logFileName = self.flightLlogFolder+"signed_log_" + self.permissionArtefactId + "_" + str(self.fileIndex) + "_" + ".json"
+        logFileName = self.flightLogFolder+"signed_" + self.permissionArtefactId + "_" + str(self.fileIndex) + "_log.json"
         self.fileIndex = self.fileIndex + 1
         
         with open(logFileName, "w") as signedLogFile:
@@ -393,7 +452,7 @@ class NPNT():
                 
 
 class RFMServer:
-    def __init__(self, flightLogFolder, paFolder, keyFolder):
+    def __init__(self, flightLogFolder, paFolder, publicKeyFile):
         self.started = False
         
         # Connection related
@@ -403,8 +462,7 @@ class RFMServer:
         self.sock = None
         
         #public key related global variables
-        self.publicKeyFolder = keyFolder
-        self.publicKeyFilename = 'test_key.pem'
+        self.publicKeyFilename = publicKeyFile
         
         #flight log related global variables
         self.flightLogFolder = flightLogFolder
@@ -493,8 +551,8 @@ class RFMServer:
     def check_public_key_request_from_client(self, strdata):
         if(strdata.__contains__('$REQ_KEY$')):
             if(path.isdir(self.publicKeyFolder)):
-                if(path.isfile(self.publicKeyFolder + self.publicKeyFilename)):
-                    with open(self.publicKeyFolder + self.publicKeyFilename,'r') as file:
+                if(path.isfile(self.publicKeyFilename)):
+                    with open(self.publicKeyFilename,'r') as file:
                         filedata = file.read()
                 self.send_status_to_client('Public key request acknowledged')
                 self.send_public_key_to_client(filedata)

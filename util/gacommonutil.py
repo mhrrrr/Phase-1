@@ -104,6 +104,14 @@ class CompanionComputer(object):
             self.globalTime = int(recievedMsg.time_unix_usec*1e-6)
             return
         
+        if recievedMsg.get_type() == "SET_UIN":
+            self.npnt.uinChangeRequested = recievedMsg.uin
+            return
+        
+        if recievedMsg.get_type() == "DO_KEY_ROTATION":
+            self.npnt.keyRotationRequested = True
+            return 
+        
     def check_pause(self):
         # check if rc 6 is more than 1800
         # if yes change the flag
@@ -123,6 +131,19 @@ class CompanionComputer(object):
                                                                                           self.mavlinkInterface.mavConnection.target_component,
                                                                                           self.npnt.get_npnt_allowed(),
                                                                                           self.npnt.get_npnt_not_allowed_reason()))
+        
+        # Acknoledgement Messages
+        if self.npnt.keyRotationRequested:
+            self.npnt.keyRotationRequested = False
+            if self.npnt.key_rotation():
+                self.add_new_message_to_sending_queue()
+            else:
+                self.add_new_message_to_sending_queue()
+                
+        if self.npnt.uinChangeRequested:
+            self.npnt.update_uin()
+            self.add_new_message_to_sending_queue()
+            self.npnt.uinChangeRequested = None
     
     def add_new_message_to_sending_queue(self, msg):
         # Only this method to be used to send the messages
