@@ -20,8 +20,7 @@ import base64, textwrap
 import threading
 import json
 import socket
-from os import listdir
-from os import path
+from os import listdir, makedirs, path
 
 class NPNT():
     def __init__(self):
@@ -37,6 +36,8 @@ class NPNT():
         self.publicKeyFile = "./NPNT/Key_Store/rfm_key_pair.pub"
         # RFM Information File
         self.rfmInfoFile = "./NPNT/rfm_info"
+        # Create Folder Structure if doesn't Exist
+        self.create_folder_structure()
         
         self.keystore = jks.KeyStore.load(self.keyStoreFile, "GenAero2016")
         
@@ -81,12 +82,26 @@ class NPNT():
         # Mavlink Handling
         self.keyRotationRequested = False
         self.uinChangeRequested = None
+        self.logDownloadDateTime = None
     
     def get_npnt_allowed(self):
         return int(self.__npntAllowed)
         
     def get_npnt_not_allowed_reason(self):
         return self.__npntNotAllowedReason
+    
+    def create_folder_structure(self):
+        if not path.exists(self.flightLogFolder):
+            makedirs(self.flightLogFolder)
+            
+        if not path.exists(self.bundledFlightLogFolder):
+            makedirs(self.bundledFlightLogFolder)
+            
+        if not path.exists(self.paFolder):
+            makedirs(self.paFolder)
+            
+        if not path.exists(self.verifiedPAFolder):
+            makedirs(self.verifiedPAFolder)
     
     def parse_rfm_info(self):
         with open(self.rfmInfoFile,'r') as rfmInfo:
@@ -100,50 +115,49 @@ class NPNT():
         with open(self.rfmInfoFile, 'r') as f:
             data = f.readlines()
             
-        data[3] = "UIN," + str(self.npnt.uinChangeRequested)
+        data[3] = "UIN," + str(self.uinChangeRequested)
         
-        with open(self.rfmInfoFile, 'r') as f:
-            data = f.writelines()
+        with open(self.rfmInfoFile, 'w') as f:
+            f.writelines(data)
             
         self.parse_rfm_info()
         
     def key_rotation(self):
-        if len(listdir(self.verifiedPAFolder)) > 0:
+        if len(listdir(self.bundledFlightLogFolder)) > 0:
             return False
-        else:
-            # generate key
-            key = OpenSSL.crypto.PKey()
-            key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
-            
-            # generate a self signed certificate
-            cert = OpenSSL.crypto.X509()
-            cert.get_subject().CN = 'generalaeronautics.com'
-            cert.set_serial_number(473289472)
-            cert.gmtime_adj_notBefore(0)
-            cert.gmtime_adj_notAfter(365*24*60*60)
-            cert.set_issuer(cert.get_subject())
-            cert.set_pubkey(key)
-            cert.sign(key, 'sha256')
-            
-            # dumping the key and cert to ASN1
-            dumped_cert = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
-            dumped_key = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_ASN1, key)
-            
-            # creating a private key entry
-            pke = jks.PrivateKeyEntry.new('RFM_Key_Pair', [dumped_cert], dumped_key, 'rsa_raw')
-            
-            # creating a jks keystore with the private key, and saving it
-            keystore = jks.KeyStore.new('jks', [pke])
-            keystore.save(self.keyStoreFile, 'GenAero2016')
-            
-            return True
+
+        # generate key
+        key = OpenSSL.crypto.PKey()
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+        
+        # generate a self signed certificate
+        cert = OpenSSL.crypto.X509()
+        cert.get_subject().CN = 'generalaeronautics.com'
+        cert.set_serial_number(473289472)
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(365*24*60*60)
+        cert.set_issuer(cert.get_subject())
+        cert.set_pubkey(key)
+        cert.sign(key, 'sha256')
+        
+        # dumping the key and cert to ASN1
+        dumped_cert = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, cert)
+        dumped_key = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_ASN1, key)
+        
+        # creating a private key entry
+        pke = jks.PrivateKeyEntry.new('RFM_Key_Pair', [dumped_cert], dumped_key, 'rsa_raw')
+        
+        # creating a jks keystore with the private key, and saving it
+        keystore = jks.KeyStore.new('jks', [pke])
+        keystore.save(self.keyStoreFile, 'GenAero2016')
+        
+        return True
     
-    def handle_log_bundle_request(self, currentDateTime):
+    def start_bundling(self, currentDateTime):
         # Convert Date and time from string to python datetime structure
         currentDateTime = datetime.strptime(currentDateTime, '%Y%m%d_%H%M%S')
         currentDateTimeLocalized = self.timeZone.localize(currentDateTime)
         
-    def start_bundling(self, currentDateTimeLocalized):
         paList = listdir(self.verifiedPAFolder)
         
         # Loop over all verified PA
@@ -155,19 +169,17 @@ class NPNT():
             paDateTime = datetime.strptime(pa.split("_"[2]), '%Y%m%d%H%M%S')
             paDateTimeLocalized = self.timeZone.localize(paDateTime)
             
+            logEntries = []
+            
             # If PA is expired
             if currentDateTimeLocalized > paDateTimeLocalized:
                 logList = listdir(self.flightLogFolder)
-                
-                bundleLogList = []
-                logEntries = []
                 
                 for log in logList:
                     # Check to remove folders like Bundle folder to be parsed as log
                     if path.isfile(path.join(self.flightLogFolder,log)):
                         paIdLog = log.split("_")[1]
                         if paId == paIdLog:
-                            bundleLogList.append(log)
                             logJson = json.load(path.join(self.flightLogFolder,log))
                             logEntries = logEntries + logJson["flightLog"]["logEntries"]
                     
@@ -319,7 +331,7 @@ class NPNT():
             json.dump(flightLog, signedLogFile, indent=4)
         
     def update(self, lat, lon, globalAlt, hdop, globalTime, isArmed):
-        if str(self.state) is str(VehicleNotRegisteredState()):
+        if str(self.state) is str(VehicleTamperedState()):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'RPAS Tampered'
             

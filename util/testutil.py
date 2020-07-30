@@ -58,12 +58,13 @@ class TestCompanionComputer(CompanionComputer):
     
     def handle_recieved_message(self):
         while True:
-            time.sleep(0.01)
             if self.killAllThread.is_set():
                 break
             recievedMsg = self.get_new_message_from_recieving_queue()
             if recievedMsg is not None:
                 super().handle_recieved_message(recievedMsg)
+            else:
+                time.sleep(0.01)
             
     def kill_all_threads(self):
         logging.info("TestCompanionComputer killing all threads")

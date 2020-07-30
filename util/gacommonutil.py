@@ -15,32 +15,6 @@ import threading
 from pymavlink import mavutil
 import queue
 
-# Class for scheduling tasks
-class ScheduleTask(object):
-    def __init__(self, interval, function, *args, **kwargs):
-        self._timer     = None
-        self.interval   = interval
-        self.function   = function
-        self.args       = args
-        self.kwargs     = kwargs
-        self.is_running = False
-        self.start()
-
-    def _run(self):
-        self.is_running = False
-        self.start()
-        self.function(*self.args, **self.kwargs)
-
-    def start(self):
-        if not self.is_running:
-            self._timer = Timer(self.interval, self._run)
-            self._timer.start()
-            self.is_running = True
-
-    def stop(self):
-        self._timer.cancel()
-        self.is_running = False
-
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Instance Mavlink Communication class
@@ -58,6 +32,9 @@ class CompanionComputer(object):
         
         # NPNT
         self.npnt = NPNT()
+        
+        # FTP
+        self.ftp = FTP()
         
         # Variable to kill all threads cleanly
         self.killAllThread = threading.Event()
@@ -107,7 +84,7 @@ class CompanionComputer(object):
             return
         
         if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
-            self.npnt.uinChangeRequested = recievedMsg.uin
+            self.npnt.uinChangeRequested = ''.join(map(chr,recievedMsg.uin[0:recievedMsg.size]))
             return
         
         if recievedMsg.get_type() == "NPNT_KEY_ROTATION":
@@ -115,7 +92,7 @@ class CompanionComputer(object):
             return
         
         if recievedMsg.get_type() == "NPNT_REQ_LOGS":
-            self.npnt.handle_log_request(recievedMsg.datetime)
+            self.npnt.logDownloadDateTime = ''.join(map(chr,recievedMsg.date_time[0:15]))
             return
         
     def check_pause(self):
@@ -141,24 +118,33 @@ class CompanionComputer(object):
         # Acknoledgement Messages
         if self.npnt.keyRotationRequested:
             self.npnt.keyRotationRequested = False
-            if self.npnt.key_rotation():
-                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(self.mavlinkInterface.mavConnection.target_system,
-                                                                                                        self.mavlinkInterface.mavConnection.target_component,
-                                                                                                        1))
-            else:
-                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(self.mavlinkInterface.mavConnection.target_system,
-                                                                                                        self.mavlinkInterface.mavConnection.target_component,
-                                                                                                        0))
+            confirm = int(self.npnt.key_rotation())
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(0,
+                                                                                                    0,
+                                                                                                    confirm))
                 
         if self.npnt.uinChangeRequested:
             self.npnt.update_uin()
             emptyBytes = [0]*30
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(self.mavlinkInterface.mavConnection.target_system,
-                                                                                                    self.mavlinkInterface.mavConnection.target_component,
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(0,
+                                                                                                    0,
                                                                                                     1,
                                                                                                     30,
                                                                                                     emptyBytes))
             self.npnt.uinChangeRequested = None
+            
+        if self.npnt.logDownloadDateTime:
+            confirm = 0
+            self.npnt.logDownloadDateTime = None
+            if len(self.npnt.logDownloadDateTime) == 15:
+                self.npnt.start_bundling()
+                confirm = 1
+                
+            emptyBytes = [0]*15
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(0,
+                                                                                                    0,
+                                                                                                    confirm,
+                                                                                                    emptyBytes))
     
     def add_new_message_to_sending_queue(self, msg):
         # Only this method to be used to send the messages
@@ -297,12 +283,13 @@ class MavlinkInterface(object):
                 break
             try:
                 # Recieve the messages
-                time.sleep(0.001)
                 recieved = self.mavConnection.recv_match()
     
                 # If empty message ignore
                 if recieved is not None:
                     self.recievedMsgQueue.put(recieved)
+                else:
+                    time.sleep(0.001)
             
             # During debugging so that we can exit the loop
             except KeyboardInterrupt:
@@ -335,7 +322,7 @@ class MavlinkInterface(object):
                         self.disconnectEvent.set()
             else:
                 # If there is no pending message to be sent wait for 0.05 seconds
-                time.sleep(0.05)
+                time.sleep(0.01)
                 
     def kill_all_threads(self):
         logging.info("MavlinkInterface killing all threads")
@@ -345,3 +332,33 @@ class MavlinkInterface(object):
         self.recievingThread.join()
         self.sendingThread.join()
         logging.info("MavlinkInterface joined all threads")
+
+class FTP(object):
+    def __init__(self):
+        pass
+
+# Class for scheduling tasks
+class ScheduleTask(object):
+    def __init__(self, interval, function, *args, **kwargs):
+        self._timer     = None
+        self.interval   = interval
+        self.function   = function
+        self.args       = args
+        self.kwargs     = kwargs
+        self.is_running = False
+        self.start()
+
+    def _run(self):
+        self.is_running = False
+        self.start()
+        self.function(*self.args, **self.kwargs)
+
+    def start(self):
+        if not self.is_running:
+            self._timer = Timer(self.interval, self._run)
+            self._timer.start()
+            self.is_running = True
+
+    def stop(self):
+        self._timer.cancel()
+        self.is_running = False
