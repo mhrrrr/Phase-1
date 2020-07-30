@@ -1621,5 +1621,33 @@
       <field type="uint8_t" name="target_component">Component ID</field>
       <field type="uint8_t" name="do_resume" units="boolean">Do Resume</field>
     </message>
+	<message id="6000" name="NPNT_STATUS">
+      <description>NPNT Status from Companion Computer to ArduPilot</description>
+      <field type="uint8_t" name="target_system">System ID</field>
+      <field type="uint8_t" name="target_component">Component ID</field>
+      <field type="uint8_t" name="arming_allowed" units="boolean">Arming is Allowed or not</field>
+	  <field type="char[50]" name="reason">What is reason if arming is not allowed</field>
+    </message>
+	<message id="6001" name="NPNT_REQ_LOGS">
+      <description>1)Request send from GCS to Companion Computer to prepare logs to download, and to note current date and time. 2)Confirmation from Comp. Computer to GCS to initiate downloading </description>
+      <field type="uint8_t" name="target_system">System ID (0 for broadcast)</field>
+      <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
+      <field type="uint8_t" name="req_confirm">0 -> not confirmed, 1 -> confirmed, send by Comp.Computer</field>
+      <field type="uint8_t[15]" name="date_time">Date_time as string format yyyymmdd_hhmmss, send by GCS</field>
+    </message>
+	<message id="6002" name="NPNT_UIN_REGISTER">
+      <description>1)Request send from GCS to Companion Computer to register UIN 2)Confirmation(0 or 1) from Comp. Computer to GCS </description>
+      <field type="uint8_t" name="target_system">System ID (0 for broadcast)</field>
+      <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
+      <field type="uint8_t" name="confirm">0 -> not confirmed, 1 -> confirmed, send by Comp.Computer</field>
+      <field type="uint8_t" name="size">size of UIN send by Comp.Computer</field>
+      <field type="uint8_t[30]" name="uin">UIN as string, send by GCS</field>
+    </message>
+	<message id="6003" name="NPNT_KEY_ROTATION">
+      <description>1)Request send from GCS to Companion Computer for key rotation 2)Confirmation(0 or 1) from Comp. Computer to GCS, 0 to download pending flight logs </description>
+      <field type="uint8_t" name="target_system">System ID (0 for broadcast)</field>
+      <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
+      <field type="uint8_t" name="confirm">0 -> not confirmed, 1 -> confirmed, send by Comp.Computer</field>
+    </message>
   </messages>
 </mavlink>

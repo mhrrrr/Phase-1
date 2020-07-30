@@ -54,6 +54,7 @@ class CompanionComputer(object):
         self.lon = -200e7
         self.hdop = 100
         self.globalTime = 0
+        self.globalAlt = -1000
         
         # NPNT
         self.npnt = NPNT()
@@ -97,6 +98,7 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "GPS_RAW_INT":
             self.lat = recievedMsg.lat
             self.lon = recievedMsg.lon
+            self.globalAlt = recievedMsg.alt/1000.
             self.hdop = recievedMsg.eph/100.
             return
         
@@ -104,13 +106,17 @@ class CompanionComputer(object):
             self.globalTime = int(recievedMsg.time_unix_usec*1e-6)
             return
         
-        if recievedMsg.get_type() == "SET_UIN":
+        if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
             self.npnt.uinChangeRequested = recievedMsg.uin
             return
         
-        if recievedMsg.get_type() == "DO_KEY_ROTATION":
+        if recievedMsg.get_type() == "NPNT_KEY_ROTATION":
             self.npnt.keyRotationRequested = True
-            return 
+            return
+        
+        if recievedMsg.get_type() == "NPNT_REQ_LOGS":
+            self.npnt.handle_log_request(recievedMsg.datetime)
+            return
         
     def check_pause(self):
         # check if rc 6 is more than 1800
@@ -126,7 +132,7 @@ class CompanionComputer(object):
         self.add_new_message_to_sending_queue(msg)
         
     def update_npnt(self):
-        self.npnt.update(self.lat, self.lon, self.hdop, self.globalTime, self.isArmed)
+        self.npnt.update(self.lat, self.lon, self.globalAlt, self.hdop, self.globalTime, self.isArmed)
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_status_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                           self.mavlinkInterface.mavConnection.target_component,
                                                                                           self.npnt.get_npnt_allowed(),
@@ -136,13 +142,22 @@ class CompanionComputer(object):
         if self.npnt.keyRotationRequested:
             self.npnt.keyRotationRequested = False
             if self.npnt.key_rotation():
-                self.add_new_message_to_sending_queue()
+                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                        self.mavlinkInterface.mavConnection.target_component,
+                                                                                                        1))
             else:
-                self.add_new_message_to_sending_queue()
+                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                        self.mavlinkInterface.mavConnection.target_component,
+                                                                                                        0))
                 
         if self.npnt.uinChangeRequested:
             self.npnt.update_uin()
-            self.add_new_message_to_sending_queue()
+            emptyBytes = [0]*30
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                    self.mavlinkInterface.mavConnection.target_component,
+                                                                                                    1,
+                                                                                                    30,
+                                                                                                    emptyBytes))
             self.npnt.uinChangeRequested = None
     
     def add_new_message_to_sending_queue(self, msg):

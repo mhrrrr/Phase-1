@@ -61,15 +61,11 @@ class NPNT():
         self.timeZone = pytz.timezone('Asia/Kolkata')
         
         # Logging
-        self.takeOffPointLat = -200
-        self.takeOffPointLon = -200
-        self.takeOffTimeStamp = 0
-        self.landPointLat = -200
-        self.landPointLon = -200
-        self.landTimeStamp = 0
-        self.breachedLat = []
-        self.breachedLon = []
-        self.breachedTimeStamp = []
+        self.loggingEntryType = []
+        self.loggingTimeStamp = []
+        self.loggingLon = []
+        self.loggingLat = []
+        self.loggingGlobalAlt = []
         self.permissionArtefactId = None
         self.fileIndex = 0
         
@@ -142,6 +138,63 @@ class NPNT():
             
             return True
     
+    def handle_log_bundle_request(self, currentDateTime):
+        # Convert Date and time from string to python datetime structure
+        currentDateTime = datetime.strptime(currentDateTime, '%Y%m%d_%H%M%S')
+        currentDateTimeLocalized = self.timeZone.localize(currentDateTime)
+        
+    def start_bundling(self, currentDateTimeLocalized):
+        paList = listdir(self.verifiedPAFolder)
+        
+        # Loop over all verified PA
+        for pa in paList:
+            # Get PA ID
+            paId = pa.split("_")[1]
+            
+            # Get End Time of PA
+            paDateTime = datetime.strptime(pa.split("_"[2]), '%Y%m%d%H%M%S')
+            paDateTimeLocalized = self.timeZone.localize(paDateTime)
+            
+            # If PA is expired
+            if currentDateTimeLocalized > paDateTimeLocalized:
+                logList = listdir(self.flightLogFolder)
+                
+                bundleLogList = []
+                logEntries = []
+                
+                for log in logList:
+                    # Check to remove folders like Bundle folder to be parsed as log
+                    if path.isfile(path.join(self.flightLogFolder,log)):
+                        paIdLog = log.split("_")[1]
+                        if paId == paIdLog:
+                            bundleLogList.append(log)
+                            logJson = json.load(path.join(self.flightLogFolder,log))
+                            logEntries = logEntries + logJson["flightLog"]["logEntries"]
+                    
+            # Start Bundling
+            # Creating dictionary for flight log
+            flightLog = {"FlightLog": {"permissionArtefact": paId,
+                                       "previousLogHash": "",
+                                       "logEntries":logEntries
+                                       }
+                        }
+            
+            # Signing Flight Log
+            rsaKey = RSA.import_key(self.read_key())
+            hashedLogData = SHA256.new(json.dumps((flightLog["FlightLog"])).encode())
+            logSignature = pkcs1_15.new(rsaKey).sign(hashedLogData)
+            # the signature is encoded in base64 for transport
+            enc = base64.b64encode(logSignature)
+            # dealing with python's byte string expression
+            flightLog['Signature'] = enc.decode('ascii')
+            
+            # Creating file name
+            logFileName = self.bundledFlightLogFolder + "signed_" + self.permissionArtefactId + "_log.json"
+            
+            with open(logFileName, "w") as signedLogFile:
+                json.dump(flightLog, signedLogFile, indent=4)
+            
+    
     def parse_permission_artefact(self):
         if len(self.permissionArtefactFileName) == 0:
             return False
@@ -202,15 +255,14 @@ class NPNT():
             return ''.join(s)
         
     def save_verified_pa(self):
-        outFileName = self.verifiedPAFolder + "verified_" + str(self.permissionArtefactId) + "_PA.xml"
+        outFileName = self.verifiedPAFolder + "verified_" + str(self.permissionArtefactId) + \
+                    "_" + self.flightEndTime.strftime("%y%m%d%H%M%S") + "_PA.xml"
         
         self.permissionArtefactTree.write(outFileName)
         
         # Update the file index in case the same PA is uploaded after reboot
         for fileName in listdir(self.flightLogFolder):
-            logging.info("FileName: %s %d"%(fileName, int(path.isfile(path.join(self.flightLogFolder, fileName)))))
             if len(fileName)>0 and path.isfile(path.join(self.flightLogFolder, fileName)):
-                logging.info("Split: %d %d"%(int(fileName.split("_")[1] == self.permissionArtefactId),int(int(fileName.split("_")[2]) >= self.fileIndex)))
                 if fileName.split("_")[1] == self.permissionArtefactId and int(fileName.split("_")[2]) >= self.fileIndex:
                     self.fileIndex = int(fileName.split("_")[2])+1
 
@@ -228,43 +280,27 @@ class NPNT():
     def write_log(self):
         with self.lock:
             # Convert Data to proper format for json export
-            geoFenceBreach = []
-            for i in range(len(self.breachedLat)):
-                geoFenceBreach.append({"Latitude":self.breachedLat[i],
-                                       "Longitude":self.breachedLon[i],
-                                       "TimeStamp":self.breachedTimeStamp[i]
-                                       })
-            landData = {"Latitude":self.landPointLat,
-                        "Longitude":self.landPointLon,
-                        "TimeStamp":self.landTimeStamp
-                        }
+            logEntries = []
+            for i in range(len(self.loggingEntryType)):
+                logEntries.append({"entryType":self.loggingEntryType[i],
+                                   "timeStamp":self.loggingTimeStamp[i],
+                                   "longitude":self.loggingLon[i],
+                                   "latitude":self.loggingLat[i],
+                                   "altitude":self.loggingGlobalAlt[i]
+                                   })
             
-            takeOffData = {"Latitude":self.takeOffPointLat,
-                           "Longitude":self.takeOffPointLon,
-                           "TimeStamp":self.takeOffTimeStamp
-                           }
-            
-            self.takeOffPointLat = -200
-            self.takeOffPointLon = -200
-            self.takeOffTimeStamp = 0
-            self.landPointLat = -200
-            self.landPointLon = -200
-            self.landTimeStamp = 0
-            self.breachedLat = []
-            self.breachedLon = []
-            self.breachedTimeStamp = []
+            self.loggingEntryType = []
+            self.loggingTimeStamp = []
+            self.loggingLon = []
+            self.loggingLat = []
+            self.loggingGlobalAlt = []
             
         # Creating dictionary for flight log
-        flightLog = {"FlightLog": {"GeofenceBreach": geoFenceBreach,
-                                   "Land": landData,
-                                   "TakeOff":takeOffData
+        flightLog = {"FlightLog": {"permissionArtefact": self.permissionArtefactId,
+                                   "previousLogHash": "",
+                                   "logEntries":logEntries
                                    }
-            }
-        # Creating json data for flight log
-#        flightLogJD = json.dumps(logDataUnsigned,  indent=4)
-        
-        # Adding Permission Artifact Information for log
-        flightLog["PermissionArtefact"] = self.permissionArtefactId
+                    }
         
         # Signing Flight Log
         rsaKey = RSA.import_key(self.read_key())
@@ -282,7 +318,7 @@ class NPNT():
         with open(logFileName, "w") as signedLogFile:
             json.dump(flightLog, signedLogFile, indent=4)
         
-    def update(self, lat, lon, hdop, globalTime, isArmed):
+    def update(self, lat, lon, globalAlt, hdop, globalTime, isArmed):
         if str(self.state) is str(VehicleNotRegisteredState()):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'RPAS Tampered'
@@ -392,9 +428,11 @@ class NPNT():
             logging.info("NPNT, Allowing to Arm")    
             
         if str(self.state) is str(TakeoffLocationNotRecorededState()):
-            self.takeOffPointLat = lat*1e-7
-            self.takeOffPointLon = lon*1e-7
-            self.takeOffTimeStamp = globalTime  
+            self.loggingEntryType.append("TAKEOFF/ARM")
+            self.loggingTimeStamp.append(globalTime)
+            self.loggingLon.append(lon*1e-7)
+            self.loggingLat.append(lat*1e-7)
+            self.loggingGlobalAlt.append(int(globalAlt))
             
             self.state = self.state.on_event("Takeoff location stored")
             
@@ -416,9 +454,11 @@ class NPNT():
             logging.info("NPNT, Flying")
             
         if str(self.state) is str(FlyingBreachedState()):
-            self.breachedLat.append(lat*1e-7)
-            self.breachedLon.append(lon*1e-7)
-            self.breachedTimeStamp.append(globalTime)
+            self.loggingEntryType.append("BREACHED")
+            self.loggingTimeStamp.append(globalTime)
+            self.loggingLon.append(lon*1e-7)
+            self.loggingLat.append(lat*1e-7)
+            self.loggingGlobalAlt.append(int(globalAlt))
             
             if not isArmed:
                 self.state = self.state.on_event("Landed")
@@ -427,9 +467,11 @@ class NPNT():
             logging.info("NPNT, Breached")
             
         if str(self.state) is str(LandLocationNotRecordedState()):
-            self.landPointLat = lat*1e-7
-            self.landPointLon = lon*1e-7
-            self.landTimeStamp = globalTime
+            self.loggingEntryType.append("LAND/DISARM")
+            self.loggingTimeStamp.append(globalTime)
+            self.loggingLon.append(lon*1e-7)
+            self.loggingLat.append(lat*1e-7)
+            self.loggingGlobalAlt.append(int(globalAlt))
 
             self.state = self.state.on_event("Land Location Stored")
                 

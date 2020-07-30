@@ -4435,12 +4435,5 @@
       <field type="float[21]" name="pose_covariance">Pose (states: x, y, z, roll, pitch, yaw) covariance matrix upper right triangle (first six entries are the first ROW, next five entries are the second ROW, etc.)</field>
       <field type="float[21]" name="twist_covariance">Twist (states: vx, vy, vz, rollspeed, pitchspeed, yawspeed) covariance matrix upper right triangle (first six entries are the first ROW, next five entries are the second ROW, etc.)</field>
     </message>
-	<message id="6000" name="NPNT_STATUS">
-      <description>NPNT Status from Companion Computer to ArduPilot</description>
-      <field type="uint8_t" name="target_system">System ID</field>
-      <field type="uint8_t" name="target_component">Component ID</field>
-      <field type="uint8_t" name="arming_allowed" units="boolean">Arming is Allowed or not</field>
-	  <field type="char[50]" name="reason">What is reason if arming is not allowed</field>
-    </message>
   </messages>
 </mavlink>
