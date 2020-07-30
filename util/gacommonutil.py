@@ -10,10 +10,11 @@ import time
 from threading import Timer
 import serial
 import logging
-from util.npnt import NPNT
+from util.npnt import NPNT, listdir, path
 import threading
 from pymavlink import mavutil
 import queue
+import struct
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
@@ -92,7 +93,17 @@ class CompanionComputer(object):
             return
         
         if recievedMsg.get_type() == "NPNT_REQ_LOGS":
+            self.npnt.logDownloadRequest = True
             self.npnt.logDownloadDateTime = ''.join(map(chr,recievedMsg.date_time[0:15]))
+            return
+        
+        if recievedMsg.get_type() == "FILE_TRANSFER_PROTOCOL":
+            replyPayload = self.ftp.handle_ftp_message(recievedMsg.payload)
+            if replyPayload:
+                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_file_transfer_protocol_message(0,
+                                                                                                             255,
+                                                                                                             0,
+                                                                                                             replyPayload))
             return
         
     def check_pause(self):
@@ -109,7 +120,7 @@ class CompanionComputer(object):
         self.add_new_message_to_sending_queue(msg)
         
     def update_npnt(self):
-        self.npnt.update(self.lat, self.lon, self.globalAlt, self.hdop, self.globalTime, self.isArmed)
+        self.npnt.update(self.lat, self.lon, self.globalAlt, self.hdop, self.globalTime, self.isArmed, self.ftp.latestUploadedPAFile)
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_status_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                           self.mavlinkInterface.mavConnection.target_component,
                                                                                           self.npnt.get_npnt_allowed(),
@@ -119,29 +130,30 @@ class CompanionComputer(object):
         if self.npnt.keyRotationRequested:
             self.npnt.keyRotationRequested = False
             confirm = int(self.npnt.key_rotation())
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(0,
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(255,
                                                                                                     0,
                                                                                                     confirm))
                 
         if self.npnt.uinChangeRequested:
             self.npnt.update_uin()
             emptyBytes = [0]*30
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(0,
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(255,
                                                                                                     0,
                                                                                                     1,
                                                                                                     30,
                                                                                                     emptyBytes))
             self.npnt.uinChangeRequested = None
             
-        if self.npnt.logDownloadDateTime:
+        if self.npnt.logDownloadRequest:
             confirm = 0
-            self.npnt.logDownloadDateTime = None
+            self.npnt.logDownloadRequest = False
             if len(self.npnt.logDownloadDateTime) == 15:
                 self.npnt.start_bundling()
+                self.npnt.logDownloadDateTime = None
                 confirm = 1
                 
             emptyBytes = [0]*15
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(0,
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_req_logs_message(255,
                                                                                                     0,
                                                                                                     confirm,
                                                                                                     emptyBytes))
@@ -335,7 +347,144 @@ class MavlinkInterface(object):
 
 class FTP(object):
     def __init__(self):
+        self.recievedFile = None
+        self.latestUploadedPAFile = None
+        
+        self.sentFile = None
+        self.sentFileSize = -1
+    
+    def update_recieved_file_status(self):
+        if "NPNT/Permission_Artefact" in self.recievedFile:
+            self.latestUploadedPAFile = self.recievedFile.split("/")[-1]
+            
+        self.recievedFile = None
+        
+    def update_sent_file_status(self):
+        self.sentFile = None
+        self.sentFileSize = -1
+        
+    def handle_ftp_message(self, payload):
+        sessionid =  payload[2]
+        opcode = payload[3]
+        size = payload[4]
+        reqopcode = payload[5]
+        burstComplete = payload[6]
+        padding = payload[7]
+        contentOffset = struct.unpack('I',bytearray([payload[8],payload[9],payload[10],payload[11]]))[0]
+        data = ''.join(map(chr,payload[12:12+size]))
+
+        replyPayload = None
+    
+        if(opcode == 6 or opcode == 7):
+            replyPayload = self.save_file(opcode, contentOffset, data)
+        if(opcode == 1):
+            replyPayload = self.terminate_session()
+        if(opcode==3):
+            replyPayload = self.send_directory_list(contentOffset, data)
+        if(opcode==4 or opcode==5):
+            replyPayload = self.send_file(opcode, contentOffset, size, data)
+            
+        return replyPayload
+    
+    def remove_file(self):
         pass
+    
+    def save_file(self, opcode, contentOffset, data):
+        payloadVal = [0]*251
+        payloadVal[3] = 128
+        if (opcode == 6):
+            self.recievedFile=data
+            
+            with open(self.recievedFile,'w') as f:
+                pass
+            payloadVal[5] = 6
+        if (opcode == 7):
+            with open(self.recievedFile,'a') as f:
+                f.seek(contentOffset)
+                f.write(data)
+            payloadVal[5] = 7
+            
+        return payloadVal
+    
+    def send_file(self, opcode, contentOffset, size, data):
+        payloadVal = [0]*251
+        payloadVal[3]=128
+        if (opcode==4):
+            self.sentFile=data
+            if path.isfile(self.sentFile):
+                with open(self.sentFile,'r') as f:
+                    self.sentFileSize = len(f.read())
+            else:
+                self.sentFileSize=0
+                payloadVal[3]=129
+            payloadVal[4]=4
+            payloadData = struct.pack('I',self.sentFileSize)
+            for j in range(0,len(payloadData)):
+                payloadVal[12+j] = payloadData[j]#struct.unpack('B', payloadData[j])[0]
+            payloadVal[5]=4
+        if (opcode==5):
+            if(contentOffset < self.sentFileSize):
+                charCount=size
+                if(contentOffset+size > self.sentFileSize):
+                   charCount = self.sentFileSize - contentOffset
+                with open(self.sentFile,'r') as f:
+                    fileString = f.read(contentOffset)
+                    fileString = f.read(charCount)
+                payloadVal[5]=5
+                payloadVal[4]=charCount
+                payloadData  = list(fileString.encode())
+                for j in range(0,charCount):
+                    payloadVal[12+j] = payloadData[j]#struct.unpack('B', payloadData[j])[0]
+    
+    
+            else:
+                payloadVal[3]=129
+                payloadVal[5]=5
+    
+        return payloadVal
+    
+    def terminate_session(self):
+        payloadVal = [0]*251
+        payloadVal[3] = 128
+        payloadVal[5] = 1
+        # Update Which file is uploaded/downloaded for other codes to handle 
+        # the relevant actions
+        if self.recievedFile:
+            self.update_recieved_file_status()
+        if self.sentFile:
+            self.update_sent_file_status()
+            
+        return payloadVal
+    
+    def send_directory_list(self, contentOffset, data):
+        # Sending only list of files
+        payloadVal = [0]*251
+        payloadVal[5]=3
+        onlyfiles=[]
+        if path.isdir(data):
+            onlyfiles = [f for f in listdir(data) if path.isfile(path.join(data, f))]
+        dirListString=''
+        if(contentOffset<len(onlyfiles)):
+            for i in range(contentOffset,len(onlyfiles)):
+                if(len(dirListString)==0):
+                    if(len(dirListString) + len(onlyfiles[i]) <=200):
+                        dirListString = dirListString + onlyfiles[i]
+                else:
+                    if(len(dirListString) + len(':') + len(onlyfiles[i]) <=200):
+                        dirListString = dirListString + ':' + onlyfiles[i]
+            payloadVal[3]=128
+            payloadData  = list(dirListString.encode())
+            size=len(payloadData)
+            payloadVal[4]=size
+            for j in range(0,size):
+                payloadVal[12+j] = payloadData[j]#struct.unpack('B', payloadData[j])[0]
+        else:
+            payloadVal[3]=129
+            size=1
+            payloadVal[4]=size
+            payloadVal[12]=6
+            
+        return payloadVal
 
 # Class for scheduling tasks
 class ScheduleTask(object):

@@ -73,15 +73,13 @@ class NPNT():
         # Lock
         self.lock = threading.Lock()
         
-        # RFM Server
-        self.rfmServer = RFMServer(self.bundledFlightLogFolder, self.paFolder, self.publicKeyFile)
-        
         # Variable to kill all threads cleanly
         self.killAllThread = threading.Event()
         
         # Mavlink Handling
         self.keyRotationRequested = False
         self.uinChangeRequested = None
+        self.logDownloadRequest = False
         self.logDownloadDateTime = None
     
     def get_npnt_allowed(self):
@@ -153,9 +151,9 @@ class NPNT():
         
         return True
     
-    def start_bundling(self, currentDateTime):
+    def start_bundling(self):
         # Convert Date and time from string to python datetime structure
-        currentDateTime = datetime.strptime(currentDateTime, '%Y%m%d_%H%M%S')
+        currentDateTime = datetime.strptime(self.logDownloadDateTime, '%Y%m%d_%H%M%S')
         currentDateTimeLocalized = self.timeZone.localize(currentDateTime)
         
         paList = listdir(self.verifiedPAFolder)
@@ -166,7 +164,7 @@ class NPNT():
             paId = pa.split("_")[1]
             
             # Get End Time of PA
-            paDateTime = datetime.strptime(pa.split("_"[2]), '%Y%m%d%H%M%S')
+            paDateTime = datetime.strptime(pa.split("_")[2], '%Y%m%d%H%M%S')
             paDateTimeLocalized = self.timeZone.localize(paDateTime)
             
             logEntries = []
@@ -201,7 +199,7 @@ class NPNT():
             flightLog['Signature'] = enc.decode('ascii')
             
             # Creating file name
-            logFileName = self.bundledFlightLogFolder + "signed_" + self.permissionArtefactId + "_log.json"
+            logFileName = self.bundledFlightLogFolder + "signed_" + paId + "_log.json"
             
             with open(logFileName, "w") as signedLogFile:
                 json.dump(flightLog, signedLogFile, indent=4)
@@ -330,7 +328,7 @@ class NPNT():
         with open(logFileName, "w") as signedLogFile:
             json.dump(flightLog, signedLogFile, indent=4)
         
-    def update(self, lat, lon, globalAlt, hdop, globalTime, isArmed):
+    def update(self, lat, lon, globalAlt, hdop, globalTime, isArmed, latestUploadedPAFileName):
         if str(self.state) is str(VehicleTamperedState()):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'RPAS Tampered'
@@ -348,18 +346,15 @@ class NPNT():
             logging.info("NPNT, RPAS is not registered")
             
         # Handling New PA in Between
-        if self.rfmServer.paAvailable:
-            if self.permissionArtefactFileName != self.rfmServer.paFilename:
-                self.permissionArtefactFileName = self.rfmServer.paFilename
+        if latestUploadedPAFileName:
+            if self.permissionArtefactFileName != latestUploadedPAFileName:
+                self.permissionArtefactFileName = latestUploadedPAFileName
                 self.state = self.state.on_event("PA Uploaded")
                 logging.info("NPNT, PA Uploaded")
                 
         if str(self.state) is str(PANotUploadedState()):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'PA Not Uploaded'
-            
-            if not self.rfmServer.started:
-                self.rfmServer.start_server()
             
             logging.info("NPNT, PA Not Uploaded")
                 
@@ -500,180 +495,8 @@ class NPNT():
 
     def kill_all_threads(self):
         logging.info("NPNT killing all threads")
-        self.rfmServer.kill_all_threads()
         self.killAllThread.set()
         logging.info("NPNT joined all threads")
-                
-
-class RFMServer:
-    def __init__(self, flightLogFolder, paFolder, publicKeyFile):
-        self.started = False
-        
-        # Connection related
-        #self.serverAddress = ('192.168.168.1', 7000)
-        self.serverAddress = ('127.0.0.1', 7000)
-        self.connection = None
-        self.sock = None
-        
-        #public key related global variables
-        self.publicKeyFilename = publicKeyFile
-        
-        #flight log related global variables
-        self.flightLogFolder = flightLogFolder
-        self.fltLogReqest = False # make it false again after associated event is triggered
-        self.fltLogName = ''
-        self.fltLogFlag = False # make it false again after associated event is triggered
-        
-        #permission artifact related global variables
-        self.paFolder = paFolder
-        self.paFilename = ''
-        self.paString = '' #permission artifact string
-        self.paAvailable = False  # make it false again after associated event is triggered
-        self.paFilenameFlag = False
-        self.paFileflag = False
-        
-        self.rfmServerThread = None
-        
-        # Variable to kill all threads cleanly
-        self.killAllThread = threading.Event()
-        
-    # Read permission artifact and save to file as well as store in a global variable
-    # Flag g_PA_available is provided to know if ermission artifact is available to access or not, this flag shoud be checked continuosly
-    def check_and_save_pa_received_from_client(self, strdata):
-    
-        if(strdata.__contains__('$PA_START$') or self.paFileflag):
-            if(strdata.__contains__('$PA_START$')):
-                self.paString = ''
-                self.paFileflag = True
-    
-            if(self.paFileflag):
-                self.paString = self.paString + strdata
-                if(strdata.__contains__('$PA_END$')):
-                    self.paFileflag = False
-                    tok = self.paString.split('$PA_START$')
-                    if(len(tok)>1):
-                        tok = tok[1].split('$PA_END$')
-                        if(len(tok)>1):
-                            tok = tok[0]
-                            tok = tok.replace('$PA_FILENAME_START$','$PA_FILENAME_END$')
-                            tok = tok.split('$PA_FILENAME_END$')
-                            if(len(tok)>2):
-                                self.paFilename = tok[1]
-                                self.paString = tok[0] + tok[2]
-                                with open(self.paFolder+self.paFilename,'w') as pafile:
-                                    pafile.write(self.paString)
-                                self.send_status_to_client("Permission artifact receival acknowledged")
-                                self.paAvailable = True
-    
-    def check_flight_log_name_request_from_client(self, strdata):
-        if(strdata.__contains__('$REF_LOGS$')):
-            self.send_flight_log_file_names_to_client()
-    
-    def send_flight_log_file_names_to_client(self):
-        if(path.isdir(self.flightLogFolder)):
-            logList = listdir(self.flightLogFolder)
-            if(len(logList)>0):
-                logString = ','.join(logList)
-                self.connection.sendall(('$LOG_NAMES_START$'+logString+'$LOG_NAMES_END$').encode())
-                self.send_status_to_client('Flight log file names request acknowledged')
-            else:
-                self.send_status_to_client('No log files available')
-        else:
-            self.send_status_to_client('Request error')
-    
-    def check_flight_log_request_from_client(self, strdata):
-        if(strdata.__contains__('$REQ_LOG_START$')):
-            self.fltLogFlag = True
-        if(self.fltLogFlag):
-            self.fltLogName = self.fltLogName + strdata
-        if(self.fltLogFlag and strdata.__contains__('$REQ_LOG_END$')):
-            self.fltLogName = self.fltLogName.replace('$REQ_LOG_START$','')
-            self.fltLogName = self.fltLogName.replace('$REQ_LOG_END$','')
-            self.send_flight_log_to_client(self.fltLogName)
-            self.fltLogFlag = False
-            self.fltLogName = ''
-    
-    def send_flight_log_to_client(self, fltLogName):
-        if(path.isdir(self.flightLogFolder)):
-            with open(self.flightLogFolder + fltLogName ,'r') as file:
-                filedata = file.read()
-            self.send_status_to_client(fltLogName + '- file download request acknowledged')
-            self.connection.sendall(('$LOG_START$'+filedata+'$LOG_END$').encode())
-        else:
-            self.send_status_to_client('Resuest Error')
-    
-    def check_public_key_request_from_client(self, strdata):
-        if(strdata.__contains__('$REQ_KEY$')):
-            if(path.isdir(self.publicKeyFolder)):
-                if(path.isfile(self.publicKeyFilename)):
-                    with open(self.publicKeyFilename,'r') as file:
-                        filedata = file.read()
-                self.send_status_to_client('Public key request acknowledged')
-                self.send_public_key_to_client(filedata)
-            else:
-                self.send_status_to_client('Resuest Error')
-    
-    
-    def send_public_key_to_client(self, key):
-        self.connection.sendall(('$KEY_START$'+key+'$KEY_END$').encode())
-    
-    def send_status_to_client(self, strdata):
-        self.connection.sendall(('>>'+strdata+ '<<').encode())
-    
-    def start_server(self):
-        self.rfmServerThread = threading.Thread(target=self.socket_init)
-        self.rfmServerThread.start()
-    
-    def socket_init(self):
-        self.started = True
-        
-        # Create a TCP/IP socket
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    
-        # Bind the socket to the port
-        logging.info("RFM Server, Starting up on %s port %s" % self.serverAddress )
-        self.sock.bind(self.serverAddress)
-    
-        # Listen for incoming connections
-        self.sock.listen(1)
-    
-        while True:
-            # Wait for a connection
-            logging.info("RFM Server, Waiting for a connection")
-            self.connection, clientAddress = self.sock.accept()
-            
-            if self.killAllThread.is_set():
-                break
-            
-            try:
-                logging.info("RFM Server, Connection from %s"%(str(clientAddress)))
-                # Receive the data in small chunks
-                while True:
-                    if self.killAllThread.is_set():
-                        break
-                    data = self.connection.recv(1024)
-    
-                    if data:
-                        self.check_and_save_pa_received_from_client(data.decode())
-                        self.check_flight_log_name_request_from_client(data.decode())
-                        self.check_public_key_request_from_client(data.decode())
-                        self.check_flight_log_request_from_client(data.decode())
-                    else:
-                        logging.info("RFM Server, No more data from %s"%(str(clientAddress)))
-                        break
-            finally:
-                # Clean up the connection
-                self.connection.close()
-    
-    def kill_all_threads(self):
-        logging.info("RFM Server killing all threads")
-        self.killAllThread.set()
-        if self.connection is None:
-            self.sock.close()
-        else:
-            self.connection.close()
-        self.rfmServerThread.join()
-        logging.info("RFM Server joined all threads")
 
 class State(object):
     """
