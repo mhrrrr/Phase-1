@@ -51,6 +51,10 @@ class NPNT():
         # Pre Checks
         self.vtdsCheck = True
         self.state = self.state.on_event("VTDS code recieved")
+        self.firmwareVersion = None
+        self.firmwareHash = None
+        self.rpasId = None
+        self.rpasModelId = None
         self.uin = None
         self.parse_rfm_info()
         
@@ -105,15 +109,33 @@ class NPNT():
         with open(self.rfmInfoFile,'r') as rfmInfo:
             for line in rfmInfo:
                 data = line.split(",")
-                if data[0].strip() == "UIN":
-                    if len(data) == 2:
-                        self.uin = data[1].strip()
+                if len(data) == 2:
+                    identifier = data[0].strip()
+                    value = data[1].strip()
+                    
+                    if identifier == "VER":
+                        self.firmwareVersion = value
+                        
+                    if identifier == "VER_CRC32":
+                        self.firmwareHash = value
+                    
+                    if identifier == "RPAS_ID":
+                        self.rpasId = value
+                        
+                    if identifier == "RPAS_MODEL_ID":
+                        self.rpasModelId = value
+                    
+                    if identifier == "UIN":
+                        self.uin = value
                         
     def update_uin(self):
+        data = []
         with open(self.rfmInfoFile, 'r') as f:
-            data = f.readlines()
-            
-        data[3] = "UIN," + str(self.uinChangeRequested)
+            for line in f:
+                if "UIN" in line:
+                    data.append("UIN," + str(self.uinChangeRequested))
+                else:
+                    data.append(line)
         
         with open(self.rfmInfoFile, 'w') as f:
             f.writelines(data)

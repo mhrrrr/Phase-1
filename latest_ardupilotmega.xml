@@ -1649,5 +1649,20 @@
       <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
       <field type="uint8_t" name="confirm">0 -> not confirmed, 1 -> confirmed, send by Comp.Computer</field>
     </message>
+	<message id="6004" name="NPNT_RFM_DETAIL">
+      <description>1)Request send from GCS to Companion Computer for knowing RFM details </description>
+      <field type="uint8_t" name="target_system">System ID (0 for broadcast)</field>
+      <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
+      <field type="char[10]" name="ver">Version of RFM code</field>
+	  <field type="uint8_t" name="len_ver">Version of RFM code length</field>
+	  <field type="char[10]" name="ver_crc32">CRC32 Hash of version</field>
+	  <field type="uint8_t" name="len_ver_crc32">CRC32 Hash of version length</field>
+	  <field type="char[20]" name="rpas_id">RPAS ID or Drone ID</field>
+	  <field type="uint8_t" name="len_rpas_id">RPAS ID or Drone ID lenght</field>
+	  <field type="char[20]" name="rpas_model_id">RPAS model number as per DGCA</field>
+	  <field type="uint8_t" name="len_rpas_model_id">RPAS model number as per DGCA length</field>
+	  <field type="char[10]" name="uin">RPAS UIN</field>
+	  <field type="uint8_t" name="len_uin">RPAS UIN length</field>
+    </message>
   </messages>
 </mavlink>

@@ -106,6 +106,21 @@ class CompanionComputer(object):
                                                                                                              replyPayload))
             return
         
+        if recievedMsg.get_type() == "NPNT_RFM_DETAIL":
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_rfm_detail_message(0,
+                                                                                                  0,
+                                                                                                  self.npnt.firmwareVersion,
+                                                                                                  len(self.npnt.firmwareVersion),
+                                                                                                  self.npnt.firmwareHash,
+                                                                                                  len(self.npnt.firmwareHash),
+                                                                                                  self.npnt.rpasId,
+                                                                                                  len(self.npnt.rpasId),
+                                                                                                  self.npnt.rpasModelId,
+                                                                                                  len(self.npnt.rpasModelId),
+                                                                                                  self.uin,
+                                                                                                  len(self.uin)))
+            return
+        
     def check_pause(self):
         # check if rc 6 is more than 1800
         # if yes change the flag
@@ -154,9 +169,9 @@ class CompanionComputer(object):
                 
             emptyBytes = [0]*15
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_req_logs_message(255,
-                                                                                                    0,
-                                                                                                    confirm,
-                                                                                                    emptyBytes))
+                                                                                                0,
+                                                                                                confirm,
+                                                                                                emptyBytes))
     
     def add_new_message_to_sending_queue(self, msg):
         # Only this method to be used to send the messages
