@@ -56,6 +56,7 @@ class NPNT():
         self.rpasId = None
         self.rpasModelId = None
         self.uin = None
+        self.lastLogHash = ""
         self.parse_rfm_info()
         
         # PA Related
@@ -128,12 +129,29 @@ class NPNT():
                     if identifier == "UIN":
                         self.uin = value
                         
+                    if identifier == "LAST_LOG_HASH":
+                        self.lastLogHash = value
+                        
     def update_uin(self):
         data = []
         with open(self.rfmInfoFile, 'r') as f:
             for line in f:
                 if "UIN" in line:
                     data.append("UIN," + str(self.uinChangeRequested))
+                else:
+                    data.append(line)
+        
+        with open(self.rfmInfoFile, 'w') as f:
+            f.writelines(data)
+            
+        self.parse_rfm_info()
+        
+    def update_last_log_hash(self, lastLogHash):
+        data = []
+        with open(self.rfmInfoFile, 'r') as f:
+            for line in f:
+                if "LAST_LOG_HASH" in line:
+                    data.append("LAST_LOG_HASH," + str(lastLogHash))
                 else:
                     data.append(line)
         
@@ -209,7 +227,7 @@ class NPNT():
                 # Start Bundling
                 # Creating dictionary for flight log
                 flightLog = {"FlightLog": {"permissionArtefact": paId,
-                                           "previousLogHash": "",
+                                           "previousLogHash": self.lastLogHash,
                                            "logEntries":logEntries
                                            }
                             }
@@ -217,6 +235,7 @@ class NPNT():
                 # Signing Flight Log
                 rsaKey = RSA.import_key(self.read_key())
                 hashedLogData = SHA256.new(json.dumps((flightLog["FlightLog"])).encode())
+                self.update_last_log_hash(hashedLogData.hexdigest())
                 logSignature = pkcs1_15.new(rsaKey).sign(hashedLogData)
                 # the signature is encoded in base64 for transport
                 enc = base64.b64encode(logSignature)
