@@ -67,6 +67,12 @@ class NPNT():
         self.permissionArtefactTreeRoot = None
         self.timeZone = pytz.timezone('Asia/Kolkata')
         
+        # GeoFence and Time Limit Related
+        self.fence = Fence()
+        self.fenceSentToGCS = True
+        self.flightStartTime = 0
+        self.flightEndTime = 0
+        
         # Logging
         self.loggingEntryType = []
         self.loggingTimeStamp = []
@@ -274,15 +280,15 @@ class NPNT():
         # Read UIN from PA
         self.pauin = self.permissionArtefactTreeRoot.find(".//UADetails").get("uinNo")
         
+        # Empty the fence data
+        self.fence.remove_all_points()
+        
         #read Coordinates from PA   
-        self.fence = Fence()
         coordinates = self.permissionArtefactTreeRoot.find(".//Coordinates")
         for x in coordinates.findall('Coordinate'):
             self.fence.add_point((float(x.get('latitude')),float(x.get('longitude'))))
             
         #read time from PA
-        self.flightStartTime = 0
-        self.flightEndTime = 0
         flightParams = self.permissionArtefactTreeRoot.find(".//FlightParameters")
         startTime = flightParams.get('flightStartTime')[0:19].replace("T", " ")
         startTimeZone = flightParams.get('flightStartTime')[-6:]
@@ -294,6 +300,8 @@ class NPNT():
         
         self.flightStartTime = self.timeZone.localize(datetime.strptime(startTime, "%Y-%m-%d %H:%M:%S"), is_dst=None)
         self.flightEndTime = self.timeZone.localize(datetime.strptime(endTime, "%Y-%m-%d %H:%M:%S"), is_dst=None)
+        
+        self.fenceSentToGCS = False
 
         return True
     
@@ -806,6 +814,9 @@ class Fence:
     points = None
 
     def __init__(self):
+        self.points = []
+        
+    def remove_all_points(self):
         self.points = []
 
     def add_point(self, point):

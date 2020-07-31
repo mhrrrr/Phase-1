@@ -1664,5 +1664,12 @@
 	  <field type="char[10]" name="uin">RPAS UIN</field>
 	  <field type="uint8_t" name="len_uin">RPAS UIN length</field>
     </message>
+	<message id="6005" name="NPNT_GEOFENCE">
+      <description>GeoFence coordinate from PA. Will be sent from RPi to GCS </description>
+      <field type="uint8_t" name="target_system">System ID (0 for broadcast)</field>
+      <field type="uint8_t" name="target_component">Component ID (0 for broadcast)</field>
+      <field type="int32_t[10]" name="lat">Latitude Array of Geofence</field>
+	  <field type="int32_t[10]" name="lon">Longitude Array of Geofence</field>
+    </message>
   </messages>
 </mavlink>

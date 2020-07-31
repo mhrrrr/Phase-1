@@ -112,6 +112,9 @@ class CompanionComputer(object):
                                                                                                   len(self.uin)))
             return
         
+        if recievedMsg.get_type() == "NPNT_GEOFENCE":
+            self.npnt.fenceSentToGCS = True
+        
         if recievedMsg.get_type() == "FILE_TRANSFER_PROTOCOL":
             replyPayload = self.ftp.handle_ftp_message(recievedMsg.payload)
             if replyPayload:
@@ -141,6 +144,20 @@ class CompanionComputer(object):
                                                                                           self.npnt.get_npnt_allowed(),
                                                                                           self.npnt.get_npnt_not_allowed_reason()))
         
+        # Geofence Message
+        if not self.npnt.fenceSentToGCS and len(self.npnt.fence.list_points()) < 10:
+            lat = [int(-200e7)]*10
+            lon = [int(-200e7)]*10
+            i=0
+            for point in self.npnt.fence.list_points():
+                lat[i] = int(point[0]*1e7)
+                lon[i] = int(point[1]*1e7)
+                i = i+1
+            
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_geofence_message(255,
+                                                                                                0,
+                                                                                                lat,
+                                                                                                lon))
         # Acknoledgement Messages
         if self.npnt.keyRotationRequested:
             self.npnt.keyRotationRequested = False
