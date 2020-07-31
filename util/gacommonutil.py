@@ -97,15 +97,6 @@ class CompanionComputer(object):
             self.npnt.logDownloadDateTime = ''.join(map(chr,recievedMsg.date_time[0:15]))
             return
         
-        if recievedMsg.get_type() == "FILE_TRANSFER_PROTOCOL":
-            replyPayload = self.ftp.handle_ftp_message(recievedMsg.payload)
-            if replyPayload:
-                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_file_transfer_protocol_message(0,
-                                                                                                             255,
-                                                                                                             0,
-                                                                                                             replyPayload))
-            return
-        
         if recievedMsg.get_type() == "NPNT_RFM_DETAIL":
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_rfm_detail_message(0,
                                                                                                   0,
@@ -119,6 +110,15 @@ class CompanionComputer(object):
                                                                                                   len(self.npnt.rpasModelId),
                                                                                                   self.uin,
                                                                                                   len(self.uin)))
+            return
+        
+        if recievedMsg.get_type() == "FILE_TRANSFER_PROTOCOL":
+            replyPayload = self.ftp.handle_ftp_message(recievedMsg.payload)
+            if replyPayload:
+                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_file_transfer_protocol_message(0,
+                                                                                                             255,
+                                                                                                             0,
+                                                                                                             replyPayload))
             return
         
     def check_pause(self):

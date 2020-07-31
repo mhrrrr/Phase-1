@@ -20,7 +20,7 @@ import base64, textwrap
 import threading
 import json
 import socket
-from os import listdir, makedirs, path
+from os import listdir, makedirs, path, remove
 
 class NPNT():
     def __init__(self):
@@ -189,6 +189,7 @@ class NPNT():
             paDateTime = datetime.strptime(pa.split("_")[2], '%Y%m%d%H%M%S')
             paDateTimeLocalized = self.timeZone.localize(paDateTime)
             
+            bundledLogList = []
             logEntries = []
             
             # If PA is expired
@@ -200,32 +201,40 @@ class NPNT():
                     if path.isfile(path.join(self.flightLogFolder,log)):
                         paIdLog = log.split("_")[1]
                         if paId == paIdLog:
-                            logJson = json.load(path.join(self.flightLogFolder,log))
-                            logEntries = logEntries + logJson["flightLog"]["logEntries"]
+                            bundledLogList.append(log)
+                            with open(path.join(self.flightLogFolder,log), 'r') as f:
+                                logJson = json.load(f)
+                            logEntries = logEntries + logJson["FlightLog"]["logEntries"]
                     
-            # Start Bundling
-            # Creating dictionary for flight log
-            flightLog = {"FlightLog": {"permissionArtefact": paId,
-                                       "previousLogHash": "",
-                                       "logEntries":logEntries
-                                       }
-                        }
-            
-            # Signing Flight Log
-            rsaKey = RSA.import_key(self.read_key())
-            hashedLogData = SHA256.new(json.dumps((flightLog["FlightLog"])).encode())
-            logSignature = pkcs1_15.new(rsaKey).sign(hashedLogData)
-            # the signature is encoded in base64 for transport
-            enc = base64.b64encode(logSignature)
-            # dealing with python's byte string expression
-            flightLog['Signature'] = enc.decode('ascii')
-            
-            # Creating file name
-            logFileName = self.bundledFlightLogFolder + "signed_" + paId + "_log.json"
-            
-            with open(logFileName, "w") as signedLogFile:
-                json.dump(flightLog, signedLogFile, indent=4)
-            
+                # Start Bundling
+                # Creating dictionary for flight log
+                flightLog = {"FlightLog": {"permissionArtefact": paId,
+                                           "previousLogHash": "",
+                                           "logEntries":logEntries
+                                           }
+                            }
+                
+                # Signing Flight Log
+                rsaKey = RSA.import_key(self.read_key())
+                hashedLogData = SHA256.new(json.dumps((flightLog["FlightLog"])).encode())
+                logSignature = pkcs1_15.new(rsaKey).sign(hashedLogData)
+                # the signature is encoded in base64 for transport
+                enc = base64.b64encode(logSignature)
+                # dealing with python's byte string expression
+                flightLog['Signature'] = enc.decode('ascii')
+                
+                # Creating file name
+                logFileName = self.bundledFlightLogFolder + "signed_" + paId + "_log.json"
+                
+                with open(logFileName, "w") as signedLogFile:
+                    json.dump(flightLog, signedLogFile, indent=4)
+                
+                # Remove individual Flight Log
+                for log in bundledLogList:
+                    remove(self.flightLogFolder + log)
+                
+                # Remove PA
+                remove(self.verifiedPAFolder + pa)
     
     def parse_permission_artefact(self):
         if len(self.permissionArtefactFileName) == 0:
@@ -288,7 +297,7 @@ class NPNT():
         
     def save_verified_pa(self):
         outFileName = self.verifiedPAFolder + "verified_" + str(self.permissionArtefactId) + \
-                    "_" + self.flightEndTime.strftime("%y%m%d%H%M%S") + "_PA.xml"
+                    "_" + self.flightEndTime.strftime("%Y%m%d%H%M%S") + "_PA.xml"
         
         self.permissionArtefactTree.write(outFileName)
         
