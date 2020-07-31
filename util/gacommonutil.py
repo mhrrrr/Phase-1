@@ -10,11 +10,11 @@ import time
 from threading import Timer
 import serial
 import logging
-from util.npnt import NPNT, listdir, path, remove
+from util.npnt import NPNT, listdir, path, remove, FlyingBreachedState
 import threading
 from pymavlink import mavutil
 import queue
-import struct
+import numpy as np
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
@@ -30,6 +30,7 @@ class CompanionComputer(object):
         self.hdop = 100
         self.globalTime = 0
         self.globalAlt = -1000
+        self.relativeAlt = -1000 # m
         
         # NPNT
         self.npnt = NPNT()
@@ -40,6 +41,19 @@ class CompanionComputer(object):
         # Variable to kill all threads cleanly
         self.killAllThread = threading.Event()
         self.scheduledTaskList = []
+        
+        # Comm loss
+        self.commLoss = False
+        self.commLossEnabled = True
+        self.commLossPersistance = 5 #s
+        self.gcsLastHearbeatTime = time.time()
+        
+        # Breach RTL engage handling
+        self.breached = False
+        self.breachedRTLEnabled = True
+        self.commRange = 500 #m
+        self.lastTakeOffLocation = (-200, -200) # (lat, lon)
+        self.takeOffLocationStored = False
         
     def init(self):
         # Start the main connection to autopilot
@@ -52,6 +66,15 @@ class CompanionComputer(object):
         # Update NPNT related Variables
         self.scheduledTaskList.append(ScheduleTask(1, self.update_npnt))
         
+        # Check for Comm Loss
+        self.scheduledTaskList.append(ScheduleTask(1, self.check_comm_loss))
+        
+        # Breach RTL check
+        self.scheduledTaskList.append(ScheduleTask(1, self.check_breach))
+        
+        # Record Home Location
+        self.scheduledTaskList.append(ScheduleTask(1, self.record_home_location))
+        
     # handle common messages
     def handle_recieved_message(self, recievedMsg):
         if recievedMsg.get_type() == "RC_CHANNELS":
@@ -59,12 +82,12 @@ class CompanionComputer(object):
             return
         
         if recievedMsg.get_type() == "HEARTBEAT":
-            if recievedMsg.autopilot == 3:
+            if recievedMsg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
                 sysStatus = recievedMsg.system_status
                 isCurrentFlying = False
-                isCurrentFlying = sysStatus == 4
+                isCurrentFlying = sysStatus == mavutil.mavlink.MAV_STATE_ACTIVE
                 if(self.isFlying and not isCurrentFlying):
-                    isCurrentFlying = sysStatus == 5 or sysStatus == 6
+                    isCurrentFlying = sysStatus == mavutil.mavlink.MAV_STATE_CRITICAL or sysStatus == mavutil.mavlink.MAV_STATE_EMERGENCY
                 self.isFlying = isCurrentFlying
                 
                 if (recievedMsg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED) != 0:
@@ -73,11 +96,19 @@ class CompanionComputer(object):
                     self.isArmed = False
                 return
             
+            if recievedMsg.type == mavutil.mavlink.MAV_TYPE_GCS:
+                self.gcsLastHearbeatTime = time.time()
+                
+            
         if recievedMsg.get_type() == "GPS_RAW_INT":
             self.lat = recievedMsg.lat
             self.lon = recievedMsg.lon
             self.globalAlt = recievedMsg.alt/1000.
             self.hdop = recievedMsg.eph/100.
+            return
+        
+        if recievedMsg.get_type() == "GLOBAL_POSITION_INT":
+            self.relativeAlt = recievedMsg.relative_alt/1000.
             return
         
         if recievedMsg.get_type() == "SYSTEM_TIME":
@@ -153,7 +184,7 @@ class CompanionComputer(object):
                 lat[i] = int(point[0]*1e7)
                 lon[i] = int(point[1]*1e7)
                 i = i+1
-            
+            logging.info("NPNT, Sending Geofence data to GCS")
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_geofence_message(255,
                                                                                                 0,
                                                                                                 lat,
@@ -162,12 +193,15 @@ class CompanionComputer(object):
         if self.npnt.keyRotationRequested:
             self.npnt.keyRotationRequested = False
             confirm = int(self.npnt.key_rotation())
+            if confirm:
+                logging.info("NPNT, Key Rotation Done")
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_key_rotation_message(255,
                                                                                                     0,
                                                                                                     confirm))
                 
         if self.npnt.uinChangeRequested:
             self.npnt.update_uin()
+            logging.info("NPNT, UIN Update Done")
             emptyBytes = [0]*30
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_uin_register_message(255,
                                                                                                     0,
@@ -181,6 +215,7 @@ class CompanionComputer(object):
             self.npnt.logDownloadRequest = False
             if len(self.npnt.logDownloadDateTime) == 15:
                 self.npnt.start_bundling()
+                logging.info("NPNT, Log Bundling Done")
                 self.npnt.logDownloadDateTime = None
                 confirm = 1
                 
@@ -189,6 +224,70 @@ class CompanionComputer(object):
                                                                                                 0,
                                                                                                 confirm,
                                                                                                 emptyBytes))
+    
+    def check_comm_loss(self):
+        # No need to check if vehicle is not flying
+        if not self.isFlying:
+            return
+        
+        # Check whether comloss action feature is enabled or not
+        if not self.commLossEnabled:
+            return
+        
+        # If no GCS heatbeat for some time
+        if (time.time()-self.gcsLastHearbeatTime) > self.commLossPersistance:
+            # If comm loss is already reported
+            if self.commLoss:
+                return
+            
+            logging.info("MSG, Engaging RTL Due to Comm Loss")
+            
+            # Engage RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                           6)) # RTL                
+            self.commLoss = True
+        else:
+            self.commLoss = False
+            
+    def check_breach(self):
+        # No need to check if vehicle is not flying
+        if not self.isFlying:
+            self.breached = False
+            return
+        
+        # Check whether comloss action feature is enabled or not
+        if not self.breachedRTLEnabled:
+            return
+        
+        distFromHome = dist_between_lat_lon(self.lastTakeOffLocation[0], 
+                                            self.lastTakeOffLocation[1], 
+                                            self.lat*1e-7,
+                                            self.lon*1e-7)
+        
+        if distFromHome > self.commRange or self.relativeAlt > 30 or str(self.npnt.state) is str(FlyingBreachedState()):
+            # If comm loss is already reported
+            if self.breached:
+                return
+            
+            logging.info("MSG, Engaging RTL Due to Breach")
+            # Engage RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                           6)) # RTL                
+            self.breached = True
+        else:
+            self.breached = False
+        
+    
+    def record_home_location(self):
+        if self.isArmed and not self.takeOffLocationStored:
+            logging.info("MSG, Home Location Recorded")
+            self.lastTakeOffLocation = (self.lat*1e-7, self.lon*1e-7)
+            self.takeOffLocationStored = True
+        
+        if not self.isArmed and self.takeOffLocationStored:
+            self.takeOffLocationStored = False
     
     def add_new_message_to_sending_queue(self, msg):
         # Only this method to be used to send the messages
@@ -551,3 +650,20 @@ class ScheduleTask(object):
     def stop(self):
         self._timer.cancel()
         self.is_running = False
+        
+def dist_between_lat_lon(lat1, lon1, lat2, lon2):
+    # Returns distance between two lat lon in meters
+    R = 6373000
+
+    lat1 = np.radians(lat1)
+    lon1 = np.radians(lon1)
+    lat2 = np.radians(lat2)
+    lon2 = np.radians(lon2)
+    
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    
+    a = np.sin(dlat / 2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2)**2
+    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
+    
+    return R * c
