@@ -32,6 +32,7 @@ class NPNT():
         self.verifiedPAFolder = "./NPNT/Permission_Artefact/Verified/"
         # KeyStore File
         self.keyStoreFile = "./NPNT/Key_Store/Keystore.jks"
+        self.pubKeyeFile = "./NPNT/Key_Store/rfm_pub_key.pem"
         # PublicKey File
         self.publicKeyFile = "./NPNT/Key_Store/rfm_key_pair.pub"
         # RFM Information File
@@ -188,6 +189,11 @@ class NPNT():
         # creating a jks keystore with the private key, and saving it
         keystore = jks.KeyStore.new('jks', [pke])
         keystore.save(self.keyStoreFile, 'GenAero2016')
+        
+        # Export the public key
+        with open(self.pubKeyeFile, "w") as f:
+            data = OpenSSL.crypto.dump_publickey(OpenSSL.crypto.FILETYPE_PEM,key).decode("utf-8") 
+            f.write(data)
         
         return True
     
