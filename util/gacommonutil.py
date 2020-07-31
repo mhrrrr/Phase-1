@@ -10,7 +10,7 @@ import time
 from threading import Timer
 import serial
 import logging
-from util.npnt import NPNT, listdir, path
+from util.npnt import NPNT, listdir, path, remove
 import threading
 from pymavlink import mavutil
 import queue
@@ -394,15 +394,23 @@ class FTP(object):
             replyPayload = self.save_file(opcode, contentOffset, data)
         if(opcode == 1):
             replyPayload = self.terminate_session()
-        if(opcode==3):
+        if(opcode == 3):
             replyPayload = self.send_directory_list(contentOffset, data)
-        if(opcode==4 or opcode==5):
+        if(opcode == 4 or opcode == 5):
             replyPayload = self.send_file(opcode, contentOffset, size, data)
+        if(opcode == 8):
+            replyPayload = self.remove_file(data)
             
         return replyPayload
     
-    def remove_file(self):
-        pass
+    def remove_file(self, data):
+        payloadVal = [0]*251
+        payloadVal[3] = 128
+        if path.isfile(data):
+            remove(data)
+        payloadVal[5] = 8
+        
+        return payloadVal
     
     def save_file(self, opcode, contentOffset, data):
         payloadVal = [0]*251
