@@ -22,8 +22,8 @@ import json
 import socket
 from os import listdir, makedirs, path, remove
 
-class NPNT():
-    def __init__(self):
+class NPNT(object):
+    def __init__(self,sitlType):
         # Log Folder
         self.flightLogFolder = "./NPNT/Flight_Logs/"
         self.bundledFlightLogFolder = "./NPNT/Flight_Logs/Bundled/"
@@ -50,8 +50,7 @@ class NPNT():
         self.state = VehicleTamperedState()
         
         # Pre Checks
-        self.vtdsCheck = True
-        self.state = self.state.on_event("VTDS code recieved")
+        self.vtds = VTDS(sitlType)
         self.firmwareVersion = None
         self.firmwareHash = None
         self.rpasId = None
@@ -397,7 +396,11 @@ class NPNT():
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'RPAS Tampered'
             
-            logging.info("NPNT, RPAS Tampered")
+            if self.vtds.check_code():
+                self.state = self.state.on_event("VTDS code recieved")
+                logging.info("NPNT, No Tampering")
+            else:
+                logging.info("NPNT, RPAS Tampered")
                 
         if str(self.state) is str(VehicleNotRegisteredState()):
             self.__npntAllowed = False
@@ -406,8 +409,8 @@ class NPNT():
             if self.uin:
                 self.state = self.state.on_event("UIN available")
                 logging.info("NPNT, RPAS is registered")
-            
-            logging.info("NPNT, RPAS is not registered")
+            else:
+                logging.info("NPNT, RPAS is not registered")
             
         # Handling New PA in Between
         if latestUploadedPAFileName:
@@ -457,7 +460,7 @@ class NPNT():
             
             self.state = self.state.on_event("PA Stored")
             
-            logging.info("NPNT, Store PA")
+            logging.info("NPNT, PA Stored")
         
         if str(self.state) is str(OutsideTimelimitState()):
             self.__npntAllowed = False
@@ -521,8 +524,8 @@ class NPNT():
             if not isArmed:
                 self.state = self.state.on_event("Landed")
                 logging.info("NPNT, Landed")
-            
-            logging.info("NPNT, Flying")
+            else:
+                logging.info("NPNT, Flying")
             
         if str(self.state) is str(FlyingBreachedState()):
             self.loggingEntryType.append("BREACHED")
@@ -534,8 +537,8 @@ class NPNT():
             if not isArmed:
                 self.state = self.state.on_event("Landed")
                 logging.info("NPNT, Landed")
-                
-            logging.info("NPNT, Breached")
+            else:
+                logging.info("NPNT, Breached")
             
         if str(self.state) is str(LandLocationNotRecordedState()):
             self.loggingEntryType.append("LAND/DISARM")
@@ -561,6 +564,35 @@ class NPNT():
         logging.info("NPNT killing all threads")
         self.killAllThread.set()
         logging.info("NPNT joined all threads")
+
+class VTDS(object):
+    def __init__(self, sitlType):
+        # Handling for SITL
+        self.isSITL = False
+        if sitlType is not None:
+            self.sitlType = sitlType
+            self.isSITL = True
+            
+        channel = 1     #I2C1 on Pin 3 & 5
+        self.addr = 0x04     #I2C address of VTDS Board
+        self.correctCode = "ga123"
+            
+        if not self.isSITL:
+            from smbus2 import SMBus
+            self.bus=SMBus(channel)
+            
+    def check_code(self):
+        if self.isSITL:
+            return True
+        else:
+            buf = self.bus.read_i2c_block_data(self.addr,0,5) #read 5 bytes with 0 offset
+            if(buf == self.correctCode):
+                logging.info("VTDS, Correct Code Recieved")
+                return True
+            else:
+                logging.info("VTDS, Wrong Code Recived: %s"%(buf))
+                return False
+            
 
 class State(object):
     """

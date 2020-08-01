@@ -33,7 +33,7 @@ class CompanionComputer(object):
         self.relativeAlt = -1000 # m
         
         # NPNT
-        self.npnt = NPNT()
+        self.npnt = NPNT(sitlType)
         
         # FTP
         self.ftp = FTP()
