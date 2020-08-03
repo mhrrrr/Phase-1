@@ -158,15 +158,15 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "NPNT_RFM_DETAIL":
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_rfm_detail_message(0,
                                                                                                   0,
-                                                                                                  self.npnt.firmwareVersion,
+                                                                                                  self.npnt.firmwareVersion.encode(),
                                                                                                   len(self.npnt.firmwareVersion),
-                                                                                                  self.npnt.firmwareHash,
+                                                                                                  self.npnt.firmwareHash.encode(),
                                                                                                   len(self.npnt.firmwareHash),
-                                                                                                  self.npnt.rpasId,
+                                                                                                  self.npnt.rpasId.encode(),
                                                                                                   len(self.npnt.rpasId),
-                                                                                                  self.npnt.rpasModelId,
+                                                                                                  self.npnt.rpasModelId.encode(),
                                                                                                   len(self.npnt.rpasModelId),
-                                                                                                  self.npnt.uin,
+                                                                                                  self.npnt.uin.encode(),
                                                                                                   len(self.npnt.uin)))
             return
         
