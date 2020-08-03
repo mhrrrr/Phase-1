@@ -466,7 +466,7 @@ class NPNT(object):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'Outside Time Limit'
             
-            if lat > -190e7 and lon > -190e7 and hdop < 2:
+            if lat > -190 and lon > -190 and hdop < 2:
                 if self.within_time(globalTime):
                     self.state = self.state.on_event("Within Allowed Time")
                     logging.info("NPNT, Within TimeLimit")
@@ -480,8 +480,8 @@ class NPNT(object):
             self.__npntAllowed = False
             self.__npntNotAllowedReason = b'Outside GeoFence'
             
-            if lat > -190e7 and lon > -190e7 and hdop < 2:
-                if self.fence.check_point((lat*1e-7,lon*1e-7)):
+            if lat > -190 and lon > -190 and hdop < 2:
+                if self.fence.check_point((lat,lon)):
                     self.state = self.state.on_event("Within Geofence")
                     logging.info("NPNT, Within Geofence")
                 else:
@@ -504,8 +504,8 @@ class NPNT(object):
         if str(self.state) is str(TakeoffLocationNotRecorededState()):
             self.loggingEntryType.append("TAKEOFF/ARM")
             self.loggingTimeStamp.append(globalTime)
-            self.loggingLon.append(lon*1e-7)
-            self.loggingLat.append(lat*1e-7)
+            self.loggingLon.append(lon)
+            self.loggingLat.append(lat)
             self.loggingGlobalAlt.append(int(globalAlt))
             
             self.state = self.state.on_event("Takeoff location stored")
@@ -513,7 +513,7 @@ class NPNT(object):
             logging.info("NPNT, TakeOff Point Recorded")
             
         if str(self.state) is str(FlyingState()):
-            if not self.fence.check_point((lat*1e-7,lon*1e-7)):
+            if not self.fence.check_point((lat,lon)):
                 self.state = self.state.on_event("Breached")
                 logging.info("NPNT, Geofence Breach")
                 
@@ -530,8 +530,8 @@ class NPNT(object):
         if str(self.state) is str(FlyingBreachedState()):
             self.loggingEntryType.append("BREACHED")
             self.loggingTimeStamp.append(globalTime)
-            self.loggingLon.append(lon*1e-7)
-            self.loggingLat.append(lat*1e-7)
+            self.loggingLon.append(lon)
+            self.loggingLat.append(lat)
             self.loggingGlobalAlt.append(int(globalAlt))
             
             if not isArmed:
@@ -543,8 +543,8 @@ class NPNT(object):
         if str(self.state) is str(LandLocationNotRecordedState()):
             self.loggingEntryType.append("LAND/DISARM")
             self.loggingTimeStamp.append(globalTime)
-            self.loggingLon.append(lon*1e-7)
-            self.loggingLat.append(lat*1e-7)
+            self.loggingLon.append(lon)
+            self.loggingLat.append(lat)
             self.loggingGlobalAlt.append(int(globalAlt))
 
             self.state = self.state.on_event("Land Location Stored")

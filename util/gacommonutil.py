@@ -15,6 +15,7 @@ import threading
 from pymavlink import mavutil
 import queue
 import numpy as np
+import struct
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
@@ -25,12 +26,23 @@ class CompanionComputer(object):
         self.rc6 = 0
         self.isFlying = False
         self.isArmed = False
-        self.lat = -200e7
-        self.lon = -200e7
+        self.currentWP = 0
+        self.currentMode = 'STABILIZE'
+        # Vehicle Position
+        self.lat = -200
+        self.lon = -200
         self.hdop = 100
         self.globalTime = 0
         self.globalAlt = -1000
         self.relativeAlt = -1000 # m
+        # Vehicle Speed
+        self.vx = 0 # m/s
+        self.vy = 0 # m/
+        self.vz = 0 # m/s
+        # Attitude
+        self.pitch = 0 # rad (-pi to pi)
+        self.roll = 0 # rad (-pi to pi)
+        self.yaw = 0 # rad (0 to 2pi)
         
         # NPNT
         self.npnt = NPNT(sitlType)
@@ -101,14 +113,29 @@ class CompanionComputer(object):
                 
             
         if recievedMsg.get_type() == "GPS_RAW_INT":
-            self.lat = recievedMsg.lat
-            self.lon = recievedMsg.lon
+            self.lat = recievedMsg.lat * 1e-7
+            self.lon = recievedMsg.lon * 1e-7
             self.globalAlt = recievedMsg.alt/1000.
             self.hdop = recievedMsg.eph/100.
             return
         
         if recievedMsg.get_type() == "GLOBAL_POSITION_INT":
+            self.vx = 0.01*recievedMsg.vx
+            self.vy = 0.01*recievedMsg.vy
+            self.vz = 0.01*recievedMsg.vz
             self.relativeAlt = recievedMsg.relative_alt/1000.
+            return
+        
+        if recievedMsg.get_type() == "ATTITUDE":
+            self.pitch = recievedMsg.pitch
+            self.roll = recievedMsg.roll
+            if recievedMsg.yaw < 0:
+                self.yaw = recievedMsg.yaw + 2*np.pi
+            else:
+                self.yaw = recievedMsg.yaw
+                
+        if recievedMsg.get_type() == "MISSION_CURRENT":
+            self.currentWP = recievedMsg.seq
             return
         
         if recievedMsg.get_type() == "SYSTEM_TIME":
@@ -262,8 +289,8 @@ class CompanionComputer(object):
         
         distFromHome = dist_between_lat_lon(self.lastTakeOffLocation[0], 
                                             self.lastTakeOffLocation[1], 
-                                            self.lat*1e-7,
-                                            self.lon*1e-7)
+                                            self.lat,
+                                            self.lon)
         
         if distFromHome > self.commRange or self.relativeAlt > 30 or str(self.npnt.state) is str(FlyingBreachedState()):
             # If comm loss is already reported
@@ -283,7 +310,7 @@ class CompanionComputer(object):
     def record_home_location(self):
         if self.isArmed and not self.takeOffLocationStored:
             logging.info("MSG, Home Location Recorded")
-            self.lastTakeOffLocation = (self.lat*1e-7, self.lon*1e-7)
+            self.lastTakeOffLocation = (self.lat, self.lon)
             self.takeOffLocationStored = True
         
         if not self.isArmed and self.takeOffLocationStored:
