@@ -166,8 +166,8 @@ class CompanionComputer(object):
                                                                                                   len(self.npnt.rpasId),
                                                                                                   self.npnt.rpasModelId,
                                                                                                   len(self.npnt.rpasModelId),
-                                                                                                  self.uin,
-                                                                                                  len(self.uin)))
+                                                                                                  self.npnt.uin,
+                                                                                                  len(self.npnt.uin)))
             return
         
         if recievedMsg.get_type() == "NPNT_GEOFENCE":
