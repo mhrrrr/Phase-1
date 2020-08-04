@@ -6,30 +6,163 @@ Created on Wed Mar 06 16:02:00 2019
 """
 
 # import necessary modules
+# import necessary modules
 import time
-from util.gacommonutil import ScheduleTask, handle_common_message, schedule_common_tasks, send_remaining_msg, dataStorageCommon, mavutil, handle_common_sensors
+from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon
+import logging
 from util.ga3apayloadutil import PIBStatus, AgriPayload, FlowSensor
 import numpy as np
-from os import path
 import sys
-import logging
+import threading
+
+class GA3ACompanionComputer(CompanionComputer):
+    def __init__(self, sitlType):
+        # Initialize super class
+        super().__init__(sitlType)
+        
+        # Threading Lock for TestCompanionComputer Class
+        self.lock = threading.Lock()
+        self.handleRecievedMsgThread = None
+        
+        # Agri Specific vehicle status 
+        self.testing = False
+        
+    def init(self):
+        super().init()
+        
+        # set data stream rate
+        self.set_data_stream()
+        
+        # start our recieving message handling loop
+        self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
+        self.handleRecievedMsgThread.start()
+        
+        while True:
+            time.sleep(1)
+            
+    def set_data_stream(self):
+        # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
+        # don't change that as it affects other vehicles as well
+    
+        # request data to be sent at the given rate
+        # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
+    
+        # stop data which are coming automatically to stop recieving unnecessary messeges
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
+
+
+        #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
+        #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
+        #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 5, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
+        #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 2, 1))
+    
+        logging.info("Stream Rate have been set")
+    
+    def handle_recieved_message(self):
+        while True:
+            if self.killAllThread.is_set():
+                break
+            recievedMsg = self.get_new_message_from_recieving_queue()
+            
+            if recievedMsg is not None:
+                if recieved_msg.get_type() == "RC_CHANNELS":
+                    if recieved_msg.chan7_raw > 1800:
+                        self.testing = True
+                    else:
+                        self.testing = False
+                    return
+        
+                if recieved_msg.get_type() == "PARAM_SET":
+                    if recieved_msg.param_id == "PAYLOAD":
+                        if recieved_msg.param_value > 0 and recieved_msg.param_value < 17:
+                            dataStorageAgri['remainingPayload'] = recieved_msg.param_value
+                    if recieved_msg.param_id == "CLEARANCE_ALT":
+                        if recieved_msg.param_value > 200 and recieved_msg.param_value < 4000:
+                            dataStorageAgri['clearanceAlt'] = recieved_msg.param_value
+                    if recieved_msg.param_id == "PESTI_PER_ACRE":
+                        if recieved_msg.param_value > 1 and recieved_msg.param_value < 20:
+                            dataStorageAgri['pesticidePerAcre'] = recieved_msg.param_value
+                    if recieved_msg.param_id == "SWATH":
+                        if recieved_msg.param_value > 1 and recieved_msg.param_value < 8:
+                            dataStorageAgri['swath'] = recieved_msg.param_value
+                    if recieved_msg.param_id == "MAX_FLOW_RATE":
+                        if recieved_msg.param_value > 0.3 and recieved_msg.param_value < 5:
+                            dataStorageAgri['maxFlowRate'] = recieved_msg.param_value
+        
+                if recieved_msg.get_type() == "PARAM_REQUEST_READ":
+                    if recieved_msg.param_id == "PAYLOAD":
+                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                          dataStorageAgri['remainingPayload'],
+                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                          5,
+                                                                          1)
+                    if recieved_msg.param_id == "CLEARANCE_ALT":
+                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                          dataStorageAgri['clearanceAlt'],
+                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                          5,
+                                                                          2)
+                    if recieved_msg.param_id == "PESTI_PER_ACRE":
+                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                          dataStorageAgri['pesticidePerAcre'],
+                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                          5,
+                                                                          3)
+                    if recieved_msg.param_id == "SWATH":
+                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                          dataStorageAgri['swath'],
+                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                          5,
+                                                                          4)
+                    if recieved_msg.param_id == "MAX_FLOW_RATE":
+                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
+                                                                          dataStorageAgri['maxFlowRate'],
+                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                          5,
+                                                                          5)
+                    msgList.append(msg)
+        
+                if recieved_msg.get_type() == "GA3A_MISSION_CMD":
+                    if recieved_msg.start_wp > 0 and recieved_msg.end_wp > recieved_msg.start_wp:
+                        dataStorageAgri['startWP'] = recieved_msg.start_wp
+                        dataStorageAgri['endWP'] = recieved_msg.end_wp
+                        if recieved_msg.mission_alt > 100:
+                            dataStorageAgri['missionAlt'] = recieved_msg.mission_alt
+                        dataStorageAgri['missionYaw'] = recieved_msg.mission_yaw
+                        dataStorageAgri['missionOn'] = True
+                        dataStorageAgri['RTLLat'] = -2000000000
+                        dataStorageAgri['RTLLon'] = -2000000000
+                        dataStorageAgri['RTLWP'] = 0
+                        write_mission_file()
+                    return
+        
+                if recieved_msg.get_type() == "GA3A_RESUME_CMD":
+                    if recieved_msg.do_resume == 1 and not dataStorageCommon['isFlying'] and not dataStorageAgri['resumeOn']:
+                        dataStorageAgri['resumeState'] = 1
+                        dataStorageAgri['resumeOn'] = True
+                    return
+        
+        
+                if recieved_msg.get_type() == "RANGEFINDER":
+                    dataStorageAgri['terrainAlt'] = recieved_msg.distance
+                    return
+                super().handle_recieved_message(recievedMsg)
+            else:
+                time.sleep(0.01)
 
 # Empty data stroage for reference
-dataStorageAgri ={'vx': 0,
-                  'vy': 0,
-                  'vz': 0,
-                  'pitch': 0,
-                  'roll': 0,
-                  'yaw': 0,
-                  'currentMode': 'STABILIZE',
-                  'currentWP': 0,
+dataStorageAgri ={
                   'startWP': 1,
                   'endWP': 2,
                   'missionYaw': 0,
                   'NozzleConfig': 0b00111100,
                   'actualNozzRPM': 0,
                   'actualFlowRate': 0,
-                  'testing': False,
                   'remainingPayload': 15,
                   'currentLat': 0,
                   'currentLon': 0,
@@ -48,36 +181,9 @@ dataStorageAgri ={'vx': 0,
                   'maxFlowRate': 1.2
                   }
 
-def set_data_stream(mavConnection, msgList, lock):
-    # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
-    # don't change that as it affects other vehicles as well
 
-    # request data to be sent at the given rate
-    # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
-
-    with lock:
-        # stop data which are coming automatically to stop recieving unnecessary messeges
-        # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
-
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
-
-
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 1, 1))
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS, 1, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS, 2, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 5, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
-        #msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
-        msgList.append(mavutil.mavlink.MAVLink_request_data_stream_message(mavConnection.target_system, mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 2, 1))
-
-    logging.info("Stream Rate have been set")
 
 def handle_sensor(schTaskList, dataStorageAgri, lock):
-    # Handle sensors that are common to all vehicles like ADSB
-    handle_common_sensors(schTaskList, lock)
-
     # Initialize Sensor handling class
     pibStatus = PIBStatus('/dev/ttyDCU')
     flowSensor = FlowSensor()
@@ -86,128 +192,6 @@ def handle_sensor(schTaskList, dataStorageAgri, lock):
     schTaskList.append(ScheduleTask(0.15, pibStatus.update, dataStorageAgri, lock))
     schTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate, dataStorageAgri, lock))
 
-def handle_messeges(recieved_msg, lock):
-    global dataStorageAgri
-    with lock:
-        if recieved_msg.get_type() == "ATTITUDE":
-            dataStorageAgri['pitch'] = recieved_msg.pitch
-            dataStorageAgri['roll'] = recieved_msg.roll
-            if recieved_msg.yaw < 0:
-                dataStorageAgri['yaw'] = recieved_msg.yaw*180/3.14 + 360
-            else:
-                dataStorageAgri['yaw'] = recieved_msg.yaw*180/3.14
-
-        if recieved_msg.get_type() == "GLOBAL_POSITION_INT":
-            dataStorageAgri['vx'] = 0.01*recieved_msg.vx
-            dataStorageAgri['vy'] = 0.01*recieved_msg.vy
-            dataStorageAgri['vz'] = 0.01*recieved_msg.vz
-            dataStorageAgri['currentLat'] = recieved_msg.lat
-            dataStorageAgri['currentLon'] = recieved_msg.lon
-            dataStorageAgri['relativeAlt'] = recieved_msg.relative_alt/1000.
-            return
-
-        if recieved_msg.get_type() == "MISSION_CURRENT":
-            dataStorageAgri['currentWP'] = recieved_msg.seq
-            return
-
-        if recieved_msg.get_type() == "RC_CHANNELS":
-            if recieved_msg.chan7_raw > 1800:
-                dataStorageAgri['testing'] = True
-            else:
-                dataStorageAgri['testing'] = False
-            return
-
-        if recieved_msg.get_type() == "PARAM_SET":
-            if recieved_msg.param_id == "PAYLOAD":
-                if recieved_msg.param_value > 0 and recieved_msg.param_value < 17:
-                    dataStorageAgri['remainingPayload'] = recieved_msg.param_value
-            if recieved_msg.param_id == "CLEARANCE_ALT":
-                if recieved_msg.param_value > 200 and recieved_msg.param_value < 4000:
-                    dataStorageAgri['clearanceAlt'] = recieved_msg.param_value
-            if recieved_msg.param_id == "PESTI_PER_ACRE":
-                if recieved_msg.param_value > 1 and recieved_msg.param_value < 20:
-                    dataStorageAgri['pesticidePerAcre'] = recieved_msg.param_value
-            if recieved_msg.param_id == "SWATH":
-                if recieved_msg.param_value > 1 and recieved_msg.param_value < 8:
-                    dataStorageAgri['swath'] = recieved_msg.param_value
-            if recieved_msg.param_id == "MAX_FLOW_RATE":
-                if recieved_msg.param_value > 0.3 and recieved_msg.param_value < 5:
-                    dataStorageAgri['maxFlowRate'] = recieved_msg.param_value
-            return
-
-        if recieved_msg.get_type() == "PARAM_REQUEST_READ":
-            if recieved_msg.param_id == "PAYLOAD":
-                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                  dataStorageAgri['remainingPayload'],
-                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                  5,
-                                                                  1)
-            if recieved_msg.param_id == "CLEARANCE_ALT":
-                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                  dataStorageAgri['clearanceAlt'],
-                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                  5,
-                                                                  2)
-            if recieved_msg.param_id == "PESTI_PER_ACRE":
-                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                  dataStorageAgri['pesticidePerAcre'],
-                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                  5,
-                                                                  3)
-            if recieved_msg.param_id == "SWATH":
-                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                  dataStorageAgri['swath'],
-                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                  5,
-                                                                  4)
-            if recieved_msg.param_id == "MAX_FLOW_RATE":
-                msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                  dataStorageAgri['maxFlowRate'],
-                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                  5,
-                                                                  5)
-            msgList.append(msg)
-            return
-
-        if recieved_msg.get_type() == "GA3A_MISSION_CMD":
-            if recieved_msg.start_wp > 0 and recieved_msg.end_wp > recieved_msg.start_wp:
-                dataStorageAgri['startWP'] = recieved_msg.start_wp
-                dataStorageAgri['endWP'] = recieved_msg.end_wp
-                if recieved_msg.mission_alt > 100:
-                    dataStorageAgri['missionAlt'] = recieved_msg.mission_alt
-                dataStorageAgri['missionYaw'] = recieved_msg.mission_yaw
-                dataStorageAgri['missionOn'] = True
-                dataStorageAgri['RTLLat'] = -2000000000
-                dataStorageAgri['RTLLon'] = -2000000000
-                dataStorageAgri['RTLWP'] = 0
-                write_mission_file()
-            return
-
-        if recieved_msg.get_type() == "GA3A_RESUME_CMD":
-            if recieved_msg.do_resume == 1 and not dataStorageCommon['isFlying'] and not dataStorageAgri['resumeOn']:
-                dataStorageAgri['resumeState'] = 1
-                dataStorageAgri['resumeOn'] = True
-            return
-
-
-        if recieved_msg.get_type() == "RANGEFINDER":
-            dataStorageAgri['terrainAlt'] = recieved_msg.distance
-            return
-
-    # handle common mssages
-    handle_common_message(recieved_msg, lock)
-
-def distance(lat1, lon1, lat2, lon2):
-    radius = 6371000 # m
-
-    dlat = np.radians(lat2-lat1)
-    dlon = np.radians(lon2-lon1)
-    a = np.sin(dlat/2) * np.sin(dlat/2) + np.cos(np.radians(lat1)) \
-        * np.cos(np.radians(lat2)) * np.sin(dlon/2) * np.sin(dlon/2)
-    c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1-a))
-    d = radius * c
-
-    return d
 
 def resume_mission(dataStorageAgri, mavConnection, mavutil, msgList, lock, resumeSendingCounter):
     sendCount = 10
@@ -404,37 +388,17 @@ def write_mission_file():
 def update(msgList, mavConnection, lock):
     ############################### Defining Variables ##############################
 
-    freq = float(100)
 
-    # List of scheduled tasks
-    schTaskList = []
 
     global dataStorageAgri
 
     agriPayload = AgriPayload()
 
-    #################################################################################
 
-    # set data stream rate for this vehicle
-    set_data_stream(mavConnection, msgList, lock)
-
-    # USE THREADING LOCK PROPERLY TO PREVENT RACE CONDITION AND DEADLOCK
-
-    ############################# Scheduled tasks #####################################
-
-    # make sure all scheduled tasks are finite/non-blocking tasks for clean exit
-    #
-    # ALSO MAKE SURE SCHEDULED TASKS TAKE MUCH LESS TIME THAN THE TIME INTERVAL
-
-    # schedule common tasks
-    schedule_common_tasks(schTaskList, msgList, lock)
 
     # handle sensors
     handle_sensor(schTaskList, dataStorageAgri, lock)
 
-    # Schedule message sending tasks
-    # schTaskList.append(ScheduleTask(timeInterval, functionName, functionArguments))
-    schTaskList.append(ScheduleTask(1./freq, send_remaining_msg, msgList, mavConnection, lock))
 
     ####################################################################################
 
@@ -509,14 +473,15 @@ def update(msgList, mavConnection, lock):
             with lock:
                 msgList.append(msg)
 
-            sys.stdout.flush()
 
             ##############################################################################
-
-        except KeyboardInterrupt:
-            # stop scheduled tasks
-            for task in schTaskList:
-                task.stop()
-
-            # again raise keyboardinterrupt so that outer try except can also handle the clean thread exits
-            raise KeyboardInterrupt
+    def kill_all_threads(self):
+        logging.info("GA3ACompanionComputer killing all threads")
+        super().kill_all_threads()
+#        self.killAllThread.set()
+#        
+#        for task in self.scheduledTaskList:
+#            task.stop()
+#        
+        self.handleRecievedMsgThread.join()
+        logging.info("GA3ACompanionComputer joined all threads")
