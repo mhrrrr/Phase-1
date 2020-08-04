@@ -586,11 +586,16 @@ class VTDS(object):
             return True
         else:
             buf = self.bus.read_i2c_block_data(self.addr,0,5) #read 5 bytes with 0 offset
-            if(buf == self.correctCode):
+            
+            stringBuf = ''
+            for character in buf:
+                stringBuf = stringBuf + chr(character)
+            
+            if(stringBuf == self.correctCode):
                 logging.info("VTDS, Correct Code Recieved")
                 return True
             else:
-                logging.info("VTDS, Wrong Code Recived: %s"%(buf))
+                logging.info("VTDS, Wrong Code Recived: %s"%(stringBuf))
                 return False
             
 

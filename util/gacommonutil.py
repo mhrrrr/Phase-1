@@ -19,6 +19,15 @@ import struct
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
+        # Threading Lock
+        self.lock = threading.Lock()
+        
+        # Handling for SITL
+        self.isSITL = False
+        if sitlType is not None:
+            self.sitlType = sitlType
+            self.isSITL = True
+        
         # Instance Mavlink Communication class
         self.mavlinkInterface = MavlinkInterface(sitlType)
         
@@ -27,18 +36,22 @@ class CompanionComputer(object):
         self.isFlying = False
         self.isArmed = False
         self.currentWP = 0
-        self.currentMode = 'STABILIZE'
+        self.currentMode = "UNKNOWN"
+        
         # Vehicle Position
         self.lat = -200
         self.lon = -200
         self.hdop = 100
         self.globalTime = 0
-        self.globalAlt = -1000
-        self.relativeAlt = -1000 # m
+        self.globalAlt = -1000      # m
+        self.relativeAlt = -1000    # m
+        self.terrainAlt = 0         # m
+        
         # Vehicle Speed
         self.vx = 0 # m/s
         self.vy = 0 # m/
         self.vz = 0 # m/s
+        
         # Attitude
         self.pitch = 0 # rad (-pi to pi)
         self.roll = 0 # rad (-pi to pi)
@@ -63,7 +76,7 @@ class CompanionComputer(object):
         # Breach RTL engage handling
         self.breached = False
         self.breachedRTLEnabled = True
-        self.commRange = 500 #m
+        self.commRange = 500 # m
         self.lastTakeOffLocation = (-200, -200) # (lat, lon)
         self.takeOffLocationStored = False
         
@@ -140,6 +153,10 @@ class CompanionComputer(object):
         
         if recievedMsg.get_type() == "SYSTEM_TIME":
             self.globalTime = int(recievedMsg.time_unix_usec*1e-6)
+            return
+        
+        if recievedMsg.get_type() == "RANGEFINDER":
+            self.terrainAlt = recievedMsg.distance
             return
         
         if recievedMsg.get_type() == "NPNT_UIN_REGISTER":

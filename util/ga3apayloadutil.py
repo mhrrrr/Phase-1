@@ -9,14 +9,11 @@ import numpy as np
 import time
 import struct
 import serial
-from util.gacommonutil import dataStorageCommon
 import copy
-if not dataStorageCommon['isSITL']:
-    import pigpio
 import logging
 
 class AgriPayload:
-    def __init__(self):        
+    def __init__(self, isSITL):        
         # PIB Input
         self.pumpPWM = 0
         self.micromiserPWM = 0
@@ -49,7 +46,8 @@ class AgriPayload:
         self.maxSpeedSentCount = 0
 
         # GPIO handling
-        if not dataStorageCommon['isSITL']:
+        if not isSITL:
+            import pigpio
             self.pi = pigpio.pi()
         self.pumpPin = 18
         self.nozzPin = 19
@@ -570,12 +568,11 @@ class PIBStatus:
                 self.ser.write(packedData)
 
 class FlowSensor:
-    def __init__(self, pin=2):
+    def __init__(self, isSITL, pin=11):
         self.pin = pin
         self.count = 0
         self.countList = [0]*10
-        self.fileName = str(time.time())
-        if not dataStorageCommon['isSITL']:
+        if not isSITL:
             self.pi = pigpio.pi()
             self.pi.set_mode(self.pin, pigpio.INPUT)
             self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
