@@ -107,6 +107,10 @@ class CompanionComputer(object):
             return
         
         if recievedMsg.get_type() == "HEARTBEAT":
+            # Update Mode
+            self.currentMode = self.mavlinkInterface.mavConnection.flightmode
+            
+            # Handle Message
             if recievedMsg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
                 sysStatus = recievedMsg.system_status
                 isCurrentFlying = False
@@ -123,6 +127,7 @@ class CompanionComputer(object):
             
             if recievedMsg.type == mavutil.mavlink.MAV_TYPE_GCS:
                 self.gcsLastHearbeatTime = time.time()
+                return
                 
             
         if recievedMsg.get_type() == "GPS_RAW_INT":

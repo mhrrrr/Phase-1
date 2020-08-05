@@ -13,7 +13,16 @@ import copy
 import logging
 
 class AgriPayload:
-    def __init__(self, isSITL):        
+    def __init__(self, isSITL):  
+        self.isSITL = isSITL
+        
+        self.nozzleConfig = 0b00111100
+        self.actualNozzRPM = 0
+        self.actualFlowRate = 0     # LPM
+        self.pesticidePerAcre = 5   # Litre/Acre
+        self.swath = 4              # m
+        self.maxFlowRate = 1.2      # Litre/Minute
+        
         # PIB Input
         self.pumpPWM = 0
         self.micromiserPWM = 0
@@ -69,93 +78,93 @@ class AgriPayload:
         # Debug Timer
         self.debugTime = time.time()
         
-    def calc_remaining_payload(self, actualFlowRate):
-        if self.remainingPayload > 0:
-            self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
-            
-    def update_time(self):
-        currTime = time.time() 
-        self.dt = currTime - self.time
-        self.time = currTime
+#    def calc_remaining_payload(self, actualFlowRate):
+#        if self.remainingPayload > 0:
+#            self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
+#            
+#    def update_time(self):
+#        currTime = time.time() 
+#        self.dt = currTime - self.time
+#        self.time = currTime
         
-    def update(self, dataStorageAgri, mavConnection, mavutil, msgList, lock):        
-        # update timer
-        self.update_time()
-        
-        # calculate speed of the vehicle
-        speed = calc_speed(dataStorageAgri, lock)
-        
-        # RPM
-        actualRPM = dataStorageAgri['actualNozzRPM']
-        
-        # actual flow rate
-        actualFlowRate = dataStorageAgri['actualFlowRate']
-        
-        # Are we testing
-        testing = dataStorageAgri['testing']
+    def update(self, testing): #dataStorageAgri, mavConnection, mavutil, msgList, lock):        
+#        # update timer
+#        self.update_time()
+#        
+#        # calculate speed of the vehicle
+#        speed = calc_speed(dataStorageAgri, lock)
+#        
+#        # RPM
+#        actualRPM = dataStorageAgri['actualNozzRPM']
+#        
+#        # actual flow rate
+#        actualFlowRate = dataStorageAgri['actualFlowRate']
+#        
+#        # Are we testing
+#        testing = dataStorageAgri['testing']
 
-        # check whether we should be spraying
-        logging.info("WP, %d, %d, %d, %s"%(dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode))
-        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] > dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
-            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
-            if not self.shouldSpraying:
-                self.maxSpeedSentCount = 0
-                
-            self.shouldSpraying = True
-            # Set correct top speed of vehicle
-            self.set_vehicle_max_speed(dataStorageAgri, mavConnection, mavutil, msgList, lock)
-            
-            # Payload Over RTL
-            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
-                if (time.time() - self.payloadOverStartTime) > 2:
-                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
-                                                                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-                                                                   6) # RTL
-                    with lock:
-                        msgList.append(msg)
-            else:
-                self.payloadOverStartTime = time.time()
-            
-        else:
-            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
-            if self.shouldSpraying:
-                self.maxSpeedSentCount = 0
-                
-            self.shouldSpraying = False
-            # send the message 3 times to be sure message reaches autopilot
-            if (self.maxSpeedSentCount < 3):
-                # create message
-                msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-                                                                   mavConnection.target_component,
-                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
-                                                                   0, # confirmation
-                                                                   0, # param1 
-                                                                   9, # param2 
-                                                                   0, # param3
-                                                                   0, # param4
-                                                                   0, # param5
-                                                                   0, # param6
-                                                                   0) # param7
-                
-                with lock:
-                    # append message to send list
-                    msgList.append(msg)
-                
-                # update counter
-                self.maxSpeedSentCount = self.maxSpeedSentCount + 1
-        
-        if self.shouldSpraying:
-            # calculate flow rate
-            self.calc_flow_rate(dataStorageAgri, speed)
-            
-            # calculate pwm for pump and nozzle
-            self.calc_pump_pwm(actualFlowRate)
-            self.calc_nozz_pwm(actualRPM)
-            
-        else:
-            if testing:
-                self.nozzPWM = 1999
-                #self.pumpPWM = 1400
+#        # check whether we should be spraying
+#        logging.info("WP, %d, %d, %d, %s"%(dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode))
+#        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] > dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
+#            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
+#            if not self.shouldSpraying:
+#                self.maxSpeedSentCount = 0
+#                
+#            self.shouldSpraying = True
+#            # Set correct top speed of vehicle
+#            self.set_vehicle_max_speed(dataStorageAgri, mavConnection, mavutil, msgList, lock)
+#            
+#            # Payload Over RTL
+#            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
+#                if (time.time() - self.payloadOverStartTime) > 2:
+#                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
+#                                                                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+#                                                                   6) # RTL
+#                    with lock:
+#                        msgList.append(msg)
+#            else:
+#                self.payloadOverStartTime = time.time()
+#            
+#        else:
+#            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
+#            if self.shouldSpraying:
+#                self.maxSpeedSentCount = 0
+#                
+#            self.shouldSpraying = False
+#            # send the message 3 times to be sure message reaches autopilot
+#            if (self.maxSpeedSentCount < 3):
+#                # create message
+#                msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
+#                                                                   mavConnection.target_component,
+#                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
+#                                                                   0, # confirmation
+#                                                                   0, # param1 
+#                                                                   9, # param2 
+#                                                                   0, # param3
+#                                                                   0, # param4
+#                                                                   0, # param5
+#                                                                   0, # param6
+#                                                                   0) # param7
+#                
+#                with lock:
+#                    # append message to send list
+#                    msgList.append(msg)
+#                
+#                # update counter
+#                self.maxSpeedSentCount = self.maxSpeedSentCount + 1
+#        
+#        if self.shouldSpraying:
+#            # calculate flow rate
+#            self.calc_flow_rate(dataStorageAgri, speed)
+#            
+#            # calculate pwm for pump and nozzle
+#            self.calc_pump_pwm(actualFlowRate)
+#            self.calc_nozz_pwm(actualRPM)
+#            
+#        else:
+        if testing:
+            self.nozzPWM = 1999
+            #self.pumpPWM = 1400
 ##                currTime = time.time()
 ##                deltaTime = currTime - self.debugTime
 ##                if deltaTime < 50:
@@ -168,29 +177,28 @@ class AgriPayload:
 ##                    self.reqFlowRate = 0.6
 ##                else:
 ##                    self.debugTime = currTime
-                self.reqFlowRate = 1.2
-                    
-                self.calc_pump_pwm(actualFlowRate)
-
-                #self.pumpPWM = 1400
-            else:
-                self.nozzPWM = self.nozzMinPWM
-                self.pumpPWM = self.pumpAbsMinPWM
-                self.reqFlowRate = 0
+#            self.reqFlowRate = 1.2
+                
+#            self.calc_pump_pwm(actualFlowRate)
+            self.pumpPWM = 1400
+        else:
+            self.nozzPWM = self.nozzMinPWM
+            self.pumpPWM = self.pumpAbsMinPWM
+            self.reqFlowRate = 0
                 
         # update the pwm in DCU
-        self.update_pwm(mavConnection, mavutil, msgList, lock)
+        self.update_pwm()
 
         # update the remaining payload
         
-        self.remainingPayload = dataStorageAgri['remainingPayload']
-        self.calc_remaining_payload(actualFlowRate)
-        with lock:
-            dataStorageAgri['remainingPayload'] = self.remainingPayload
+#        self.remainingPayload = dataStorageAgri['remainingPayload']
+#        self.calc_remaining_payload(actualFlowRate)
+#        with lock:
+#            dataStorageAgri['remainingPayload'] = self.remainingPayload
             
-        logging.info("FlowRate, %f, %f"%(self.reqFlowRate, actualFlowRate))
+#        logging.info("FlowRate, %f, %f"%(self.reqFlowRate, actualFlowRate))
         logging.info("FlowPWM, %d, %d"%(self.nozzPWM, self.pumpPWM))
-        logging.info("RemPayload, %f"%(self.remainingPayload))
+#        logging.info("RemPayload, %f"%(self.remainingPayload))
         
     def calc_flow_rate(self, dataStorageAgri, speed):
         # sanity check of speed
@@ -312,7 +320,7 @@ class AgriPayload:
             self.maxSpeedSentCount = self.maxSpeedSentCount + 1
             
     
-    def update_pwm(self, mavConnection, mavutil, msgList, lock):
+    def update_pwm(self):
         # Redundant check to prevent unrealistic value to go to the FCS
         if self.nozzPWM > 2000:
             self.nozzPWM = 2000
@@ -323,38 +331,9 @@ class AgriPayload:
         if self.pumpPWM < 1000:
             self.pumpPWM = 1000
 
-        if not dataStorageCommon['isSITL']:
+        if not self.isSITL:
             self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
             self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
-                
-##        # create message
-##        pumpPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-##                                                                  mavConnection.target_component,
-##                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-##                                                                  0,
-##                                                                  9,
-##                                                                  self.pumpPWM,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0)
-##        nozzPWMMsg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-##                                                                  mavConnection.target_component,
-##                                                                  mavutil.mavlink.MAV_CMD_DO_SET_SERVO,
-##                                                                  0,
-##                                                                  10,
-##                                                                  self.nozzPWM,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0,
-##                                                                  0)
-##        
-##        with lock:
-##            # append message to send list
-##            msgList.append(pumpPWMMsg)
-##            msgList.append(nozzPWMMsg)
         
 ###############################################################################
         
@@ -402,7 +381,7 @@ class PIBStatus:
         self.timer = time.time()
         
         # Nozzle configuration
-        self.nozzleConfiguration = 0b00000000
+        self.nozzleConfiguration = 0b00111100
         
         # Initialize
         self.init()

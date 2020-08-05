@@ -10,7 +10,7 @@ Created on Wed Mar 06 16:02:00 2019
 import time
 from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask
 import logging
-from util.ga3apayloadutil import PIBStatus, AgriPayload, FlowSensor
+from util.ga3apayloadutil import AgriPayload#, PIBStatus, FlowSensor
 import numpy as np
 import sys
 import threading
@@ -29,6 +29,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.missionYaw = 0
         self.missionAlt = 3       # m
         self.missionOn = False
+        self.previousMode = "UNKNOWN"
         
         # Resume Mission Related
         self.RTLLat = -200
@@ -40,13 +41,6 @@ class GA3ACompanionComputer(CompanionComputer):
         
         # Payload Related
         self.agriPayload = AgriPayload(self.isSITL)
-        self.nozzleConfig = 0b00111100
-        self.actualNozzRPM = 0
-        self.actualFlowRate = 0     # LPM
-        self.remainingPayload = 15  # Litre
-        self.pesticidePerAcre = 5   # Litre/Acre
-        self.swath = 4              # m
-        self.maxFlowRate = 1.2      # Litre/Minute
         
         # Agri Specific vehicle status 
         self.testing = False
@@ -64,18 +58,21 @@ class GA3ACompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
         
-        # Record Home Location
-        if not self.isSITL:
-            # Initialize Sensor handling class
-            pibStatus = PIBStatus('/dev/ttyDCU')
-            flowSensor = FlowSensor(self.isSITL)
+        # Start Agri Loop
+        self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
         
-            # Schedule the tasks
-            self.scheduledTaskList.append(ScheduleTask(0.15, pibStatus.update))
-            self.scheduledTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate))
-            
-        else:
-            pass
+        # Record Home Location
+#        if not self.isSITL:
+#            # Initialize Sensor handling class
+#            pibStatus = PIBStatus('/dev/ttyDCU')
+#            flowSensor = FlowSensor(self.isSITL)
+#        
+#            # Schedule the tasks
+#            self.scheduledTaskList.append(ScheduleTask(0.15, pibStatus.update))
+#            self.scheduledTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate))
+#            
+#        else:
+#            pass
         
         while True:
             time.sleep(1)
@@ -115,57 +112,57 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.testing = True
                     else:
                         self.testing = False
-                    return
         
                 if recievedMsg.get_type() == "PARAM_SET":
-                    if recievedMsg.param_id == "PAYLOAD":
+                    paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    if paramId == "PAYLOAD":
                         if recievedMsg.param_value > 0 and recievedMsg.param_value < 17:
-                            self.remainingPayload = recievedMsg.param_value
-                    if recievedMsg.param_id == "CLEARANCE_ALT":
+                            self.agriPayload.remainingPayload = recievedMsg.param_value
+                    if paramId == "CLEARANCE_ALT":
                         if recievedMsg.param_value > 200 and recievedMsg.param_value < 4000:
-                            self.clearanceAlt = recievedMsg.param_value/100.
-                    if recievedMsg.param_id == "PESTI_PER_ACRE":
+                            self.agriPayload.clearanceAlt = recievedMsg.param_value/100.
+                    if paramId == "PESTI_PER_ACRE":
                         if recievedMsg.param_value > 1 and recievedMsg.param_value < 20:
-                            self.pesticidePerAcre = recievedMsg.param_value
-                    if recievedMsg.param_id == "SWATH":
+                            self.agriPayload.pesticidePerAcre = recievedMsg.param_value
+                    if paramId == "SWATH":
                         if recievedMsg.param_value > 1 and recievedMsg.param_value < 8:
-                            self.swath = recievedMsg.param_value
-                    if recievedMsg.param_id == "MAX_FLOW_RATE":
+                            self.agriPayload.swath = recievedMsg.param_value
+                    if paramId == "MAX_FLOW_RATE":
                         if recievedMsg.param_value > 0.3 and recievedMsg.param_value < 5:
-                            self.maxFlowRate = recievedMsg.param_value
+                            self.agriPayload.maxFlowRate = recievedMsg.param_value
         
                 if recievedMsg.get_type() == "PARAM_REQUEST_READ":
-                    if recievedMsg.param_id == "PAYLOAD":
-                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                          self.remainingPayload,
-                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                          5,
-                                                                          1)
-                    if recievedMsg.param_id == "CLEARANCE_ALT":
-                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                          int(self.clearanceAlt*100),
-                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                          5,
-                                                                          2)
-                    if recievedMsg.param_id == "PESTI_PER_ACRE":
-                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                          self.pesticidePerAcre,
-                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                          5,
-                                                                          3)
-                    if recievedMsg.param_id == "SWATH":
-                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                          self.swath,
-                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                          5,
-                                                                          4)
-                    if recievedMsg.param_id == "MAX_FLOW_RATE":
-                        msg = mavutil.mavlink.MAVLink_param_value_message("PAYLOAD",
-                                                                          self.maxFlowRate,
-                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                          5,
-                                                                          5)
-                    self.add_new_message_to_sending_queue(msg)
+                    paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    if paramId == "PAYLOAD":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
+                                                                                                          self.agriPayload.remainingPayload,
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          5,
+                                                                                                          1))
+                    if paramId == "CLEARANCE_ALT":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
+                                                                                                          int(self.agriPayload.clearanceAlt*100),
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          5,
+                                                                                                          2))
+                    if paramId == "PESTI_PER_ACRE":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PESTI_PER_ACRE".encode(),
+                                                                                                          self.agriPayload.pesticidePerAcre,
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          5,
+                                                                                                          3))
+                    if paramId == "SWATH":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("SWATH".encode(),
+                                                                                                          self.agriPayload.swath,
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          5,
+                                                                                                          4))
+                    if paramId == "MAX_FLOW_RATE":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("MAX_FLOW_RATE".encode(),
+                                                                                                          self.agriPayload.maxFlowRate,
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          5,
+                                                                                                          5))
         
                 if recievedMsg.get_type() == "GA3A_MISSION_CMD":
                     if recievedMsg.start_wp > 0 and recievedMsg.end_wp > recievedMsg.start_wp:
@@ -179,13 +176,11 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.RTLLon = -200
                         self.RTLWP = 0
                         self.write_mission_file()
-                    return
         
                 if recievedMsg.get_type() == "GA3A_RESUME_CMD":
                     if recievedMsg.do_resume == 1 and not self.isFlying and not self.resumeOn:
                         self.resumeState = 1
                         self.resumeOn = True
-                    return
         
                 super().handle_recieved_message(recievedMsg)
             else:
@@ -389,7 +384,7 @@ class GA3ACompanionComputer(CompanionComputer):
                 for line in f:
                     data = line.split()
                     if len(data) == 8:
-                        with lock:
+                        with self.lock:
                             self.missionOn = bool(int(data[0]))
                             self.startWP = int(data[1])
                             self.endWP = int(data[2])
@@ -401,55 +396,48 @@ class GA3ACompanionComputer(CompanionComputer):
                     return
     
     def update(self):
-        agriPayload = AgriPayload()
-    
         resumeSendingCounter = [0]
-        while True:
-            # Prevent unnecessary resource usage by this program
-            time.sleep(0.2)
 
-            # Rewrite mission file in case of mission is over
-            if self.currentWP > self.endWP and (self.RTLWP>0):
-                if self.missionOn:
-                    self.RTLLat = -200
-                    self.RTLLon = -200
-                    self.RTLWP = 0
-                    self.write_mission_file()
+        # Rewrite mission file in case of mission is over
+        if self.currentWP > self.endWP and (self.RTLWP>0):
+            if self.missionOn:
+                self.RTLLat = -200
+                self.RTLLon = -200
+                self.RTLWP = 0
+                self.write_mission_file()
 
 
-            # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
-            with lock:
-                if self.mavlinkInterface.mavConnection.flightmode is 'RTL' and self.currentMode is 'AUTO':
-                    self.RTLLat = self.lat
-                    self.RTLLon = self.lon
-                    self.RTLWP = self.currentWP
-                    self.write_mission_file()
-                    
-                # Update Mode
-                self.currentMode = self.mavlinkInterface.mavConnection.flightmode
-                
+        # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
+        if self.previousMode is 'RTL' and self.currentMode is 'AUTO':
+            self.RTLLat = self.lat
+            self.RTLLon = self.lon
+            self.RTLWP = self.currentWP
+            self.write_mission_file()
+            
+        # Resume Mission Handling
+#            resume_mission(mavConnection, mavutil, msgList, lock, resumeSendingCounter)
 
-            # Resume Mission Handling
-            resume_mission(mavConnection, mavutil, msgList, lock, resumeSendingCounter)
+        if self.resumeOn and self.currentMode is not 'GUIDED' and self.resumeState > 1:
+            resumeSendingCounter[0] = 0
+            self.resumeOn = False
+            self.resumeState = 0
 
-            if self.resumeOn and self.currentMode is not 'GUIDED' and self.resumeState > 1:
-                resumeSendingCounter[0] = 0
-                self.resumeOn = False
-                self.resumeState = 0
+        # update the required flow rate to the agri payload handlere
+        self.agriPayload.update(self.testing)
 
-            # update the required flow rate to the agri payload handlere
-            agriPayload.update(mavConnection, mavutil, msgList, lock)
-
-            # send the data to GCS
-            resumeButtonEnable = False
-            if not self.isFlying and self.missionOn and self.RTLWP>self.startWP and self.RTLWP<=self.endWP:
-                resumeButtonEnable = True
-                
-            # Payload Status send to GCS
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
-                                                                                                      0,
-                                                                                                      self.remainingPayload,
-                                                                                                      int(resumeButtonEnable)))
+        # send the data to GCS
+        resumeButtonEnable = False
+        if not self.isFlying and self.missionOn and self.RTLWP>self.startWP and self.RTLWP<=self.endWP:
+            resumeButtonEnable = True
+            
+        # Payload Status send to GCS
+#        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
+#                                                                                                  0,
+#                                                                                                  self.agriPayload.remainingPayload,
+#                                                                                                  int(resumeButtonEnable)))
+        
+        # Update Mode
+        self.previousMode = self.currentMode
 
     def kill_all_threads(self):
         logging.info("GA3ACompanionComputer killing all threads")
