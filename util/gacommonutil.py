@@ -422,19 +422,20 @@ class MavlinkInterface(object):
             try:
                 time.sleep(1)
                 # Create the connection
-                if self.sitlType == 'tcp':
-                    self.mavConnection = mavutil.mavlink_connection('tcp:127.0.0.1:5760',
-                                                               source_system=1,
-                                                               source_component=10)
-                elif self.sitlType == 'udp':
-                    self.mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14551',
-                                                               source_system=1,
-                                                               source_component=10)
-                elif self.sitlType == 'com':
-                    self.mavConnection = mavutil.mavlink_connection('COM28',
-                                                               baud=57600,
-                                                               source_system=1,
-                                                               source_component=10)
+                if self.isSITL:
+                    if self.sitlType == 'tcp':
+                        self.mavConnection = mavutil.mavlink_connection('tcp:127.0.0.1:5760',
+                                                                   source_system=1,
+                                                                   source_component=10)
+                    elif self.sitlType == 'udp':
+                        self.mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14551',
+                                                                   source_system=1,
+                                                                   source_component=10)
+                    elif self.sitlType == 'com':
+                        self.mavConnection = mavutil.mavlink_connection('COM28',
+                                                                   baud=57600,
+                                                                   source_system=1,
+                                                                   source_component=10)
                 else:
                     # Need to provide the serial port and baudrate
                     self.mavConnection = mavutil.mavlink_connection('/dev/serial0',
