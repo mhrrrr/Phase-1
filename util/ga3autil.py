@@ -19,10 +19,10 @@ class GA3ACompanionComputer(CompanionComputer):
     def __init__(self, sitlType):
         # Initialize super class
         super().__init__(sitlType)
-        
+
         # Threading Lock for TestCompanionComputer Class
         self.handleRecievedMsgThread = None
-        
+
         # Spraying Mission Related
         self.startWP = 1
         self.endWP = 2
@@ -30,7 +30,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.missionAlt = 3       # m
         self.missionOn = False
         self.previousMode = "UNKNOWN"
-        
+
         # Resume Mission Related
         self.RTLLat = -200
         self.RTLLon = -200
@@ -38,52 +38,52 @@ class GA3ACompanionComputer(CompanionComputer):
         self.clearanceAlt = 10    # m
         self.resumeOn = False
         self.resumeState = 0
-        
+
         # Payload Related
         self.agriPayload = AgriPayload(self.isSITL)
-        
-        # Agri Specific vehicle status 
+
+        # Agri Specific vehicle status
         self.testing = False
-        
+
         # Read Agri Mission File
         self.read_mission_file()
-        
+
     def init(self):
         super().init()
-        
+
         # set data stream rate
         self.set_data_stream()
-        
+
         # start our recieving message handling loop
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
-        
+
         # Start Agri Loop
         self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
-        
+
         # Record Home Location
 #        if not self.isSITL:
 #            # Initialize Sensor handling class
 #            pibStatus = PIBStatus('/dev/ttyDCU')
 #            flowSensor = FlowSensor(self.isSITL)
-#        
+#
 #            # Schedule the tasks
 #            self.scheduledTaskList.append(ScheduleTask(0.15, pibStatus.update))
 #            self.scheduledTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate))
-#            
+#
 #        else:
 #            pass
-        
+
         while True:
             time.sleep(1)
-            
+
     def set_data_stream(self):
         # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
         # don't change that as it affects other vehicles as well
-    
+
         # request data to be sent at the given rate
         # arguments are (target_system, target_component, stream_type, frequency in Hz, stop(0) or start(1))
-    
+
         # stop data which are coming automatically to stop recieving unnecessary messeges
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_ALL, 4, 0))
 
@@ -97,42 +97,56 @@ class GA3ACompanionComputer(CompanionComputer):
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
         #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 2, 1))
-    
+
         logging.info("Stream Rate have been set")
-    
+
     def handle_recieved_message(self):
         while True:
             if self.killAllThread.is_set():
                 break
             recievedMsg = self.get_new_message_from_recieving_queue()
-            
+
             if recievedMsg is not None:
                 if recievedMsg.get_type() == "RC_CHANNELS":
                     if recievedMsg.chan7_raw > 1800:
                         self.testing = True
                     else:
                         self.testing = False
-        
+
                 if recievedMsg.get_type() == "PARAM_SET":
-                    paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    #paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    paramId = recievedMsg.param_id
+                    try:
+                        paramId = recievedMsg.param_id.replace(b'\x00',b'')
+                        paramId = paramId.decode()
+                    except:
+                        pass
+                    paramValue = recievedMsg.param_value
                     if paramId == "PAYLOAD":
-                        if recievedMsg.param_value > 0 and recievedMsg.param_value < 17:
-                            self.agriPayload.remainingPayload = recievedMsg.param_value
+                        print("Payload param received",paramValue)
+                        if paramValue > 0 and paramValue < 17:
+                            self.agriPayload.remainingPayload = paramValue
                     if paramId == "CLEARANCE_ALT":
-                        if recievedMsg.param_value > 200 and recievedMsg.param_value < 4000:
-                            self.agriPayload.clearanceAlt = recievedMsg.param_value/100.
+                        if paramValue > 200 and paramValue < 4000:
+                            self.agriPayload.clearanceAlt = paramValue/100.
                     if paramId == "PESTI_PER_ACRE":
-                        if recievedMsg.param_value > 1 and recievedMsg.param_value < 20:
-                            self.agriPayload.pesticidePerAcre = recievedMsg.param_value
+                        if paramValue > 1 and paramValue < 20:
+                            self.agriPayload.pesticidePerAcre = paramValue
                     if paramId == "SWATH":
-                        if recievedMsg.param_value > 1 and recievedMsg.param_value < 8:
-                            self.agriPayload.swath = recievedMsg.param_value
+                        if paramValue > 1 and paramValue < 8:
+                            self.agriPayload.swath = paramValue
                     if paramId == "MAX_FLOW_RATE":
-                        if recievedMsg.param_value > 0.3 and recievedMsg.param_value < 5:
-                            self.agriPayload.maxFlowRate = recievedMsg.param_value
-        
+                        if paramValue > 0.3 and paramValue < 5:
+                            self.agriPayload.maxFlowRate = paramValue
+
                 if recievedMsg.get_type() == "PARAM_REQUEST_READ":
-                    paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    #paramId = recievedMsg.param_id.strip(b"\x00").decode()
+                    paramId = recievedMsg.param_id
+                    try:
+                        paramId = recievedMsg.param_id.replace(b'\x00',b'')
+                        paramId = paramId.decode()
+                    except:
+                        pass
                     if paramId == "PAYLOAD":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
                                                                                                           self.agriPayload.remainingPayload,
@@ -163,7 +177,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
                                                                                                           5,
                                                                                                           5))
-        
+
                 if recievedMsg.get_type() == "GA3A_MISSION_CMD":
                     if recievedMsg.start_wp > 0 and recievedMsg.end_wp > recievedMsg.start_wp:
                         self.startWP = recievedMsg.start_wp
@@ -176,12 +190,12 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.RTLLon = -200
                         self.RTLWP = 0
                         self.write_mission_file()
-        
+
                 if recievedMsg.get_type() == "GA3A_RESUME_CMD":
                     if recievedMsg.do_resume == 1 and not self.isFlying and not self.resumeOn:
                         self.resumeState = 1
                         self.resumeOn = True
-        
+
                 super().handle_recieved_message(recievedMsg)
             else:
                 time.sleep(0.01)
@@ -204,8 +218,8 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
-    
+
+
     #         # TakeOff
     #         if self.resumeState == 2:
     #             if self.relativeAlt > 2:
@@ -228,7 +242,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Goto Clearance Altitude
     #         if self.resumeState == 3:
     #             if self.terrainAlt > (self.clearanceAlt-1):
@@ -256,7 +270,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Align heading to mission heading
     #         if self.resumeState == 4:
     #             if abs(self.yaw-self.missionYaw) < 5:
@@ -279,7 +293,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Guide to Top of the RTL point
     #         if self.resumeState == 5:
     #             if distance(self.RTLLat, self.RTLLon, self.lat, self.lon) < 1:
@@ -307,7 +321,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Come down to Actual point
     #         if self.resumeState == 6:
     #             if self.terrainAlt < (self.missionAlt+1):
@@ -335,7 +349,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Set Current Waypoint
     #         if self.resumeState == 7:
     #             if self.currentWP == self.RTLWP:
@@ -350,7 +364,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     #         # Engage AUTO mission
     #         if self.resumeState == 8:
     #             if mavConnection.flightmode == "AUTO":
@@ -366,7 +380,7 @@ class GA3ACompanionComputer(CompanionComputer):
     #                     with lock:
     #                         msgList.append(msg)
     #                 return
-    
+
     def write_mission_file(self):
         with open('agri_mission_file', 'w') as f:
             f.write('%d %d %d %d %d %d %d %d'%(int(self.missionOn),
@@ -377,7 +391,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                int(self.RTLLat*1e7),
                                                int(self.RTLLon*1e7),
                                                self.RTLWP))
-            
+
     def read_mission_file(self):
         if path.exists('agri_mission_file'):
             with open('agri_mission_file', 'r') as f:
@@ -394,7 +408,7 @@ class GA3ACompanionComputer(CompanionComputer):
                             self.RTLLon = int(data[6])*1e-7
                             self.RTLWP = int(data[7])
                     return
-    
+
     def update(self):
         resumeSendingCounter = [0]
 
@@ -413,7 +427,7 @@ class GA3ACompanionComputer(CompanionComputer):
             self.RTLLon = self.lon
             self.RTLWP = self.currentWP
             self.write_mission_file()
-            
+
         # Resume Mission Handling
 #            resume_mission(mavConnection, mavutil, msgList, lock, resumeSendingCounter)
 
@@ -429,13 +443,13 @@ class GA3ACompanionComputer(CompanionComputer):
         resumeButtonEnable = False
         if not self.isFlying and self.missionOn and self.RTLWP>self.startWP and self.RTLWP<=self.endWP:
             resumeButtonEnable = True
-            
+
         # Payload Status send to GCS
 #        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
 #                                                                                                  0,
 #                                                                                                  self.agriPayload.remainingPayload,
 #                                                                                                  int(resumeButtonEnable)))
-        
+
         # Update Mode
         self.previousMode = self.currentMode
 
@@ -443,9 +457,9 @@ class GA3ACompanionComputer(CompanionComputer):
         logging.info("GA3ACompanionComputer killing all threads")
         super().kill_all_threads()
 #        self.killAllThread.set()
-#        
+#
 #        for task in self.scheduledTaskList:
 #            task.stop()
-#        
+#
         self.handleRecievedMsgThread.join()
         logging.info("GA3ACompanionComputer joined all threads")
