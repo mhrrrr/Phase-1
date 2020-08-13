@@ -574,6 +574,10 @@ class FTP(object):
         if(opcode == 8):
             replyPayload = self.remove_file(data)
 
+        #replying the same sequence number back
+        replyPayload[0]=payload[0]
+        replyPayload[1]=payload[1]
+
         return replyPayload
 
     def remove_file(self, data):
