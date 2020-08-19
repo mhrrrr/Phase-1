@@ -10,7 +10,7 @@ import time
 from threading import Timer
 import serial
 import logging
-from util.npnt import NPNT, listdir, path, remove, FlyingBreachedState
+from util.npnt import NPNT, listdir, path, remove, FlyingBreachedState, State
 import threading
 from pymavlink import mavutil
 import queue

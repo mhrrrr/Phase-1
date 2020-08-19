@@ -8,7 +8,7 @@ Created on Wed Mar 06 16:02:00 2019
 # import necessary modules
 # import necessary modules
 import time
-from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask
+from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask, State
 import logging
 from util.ga3apayloadutil import AgriPayload#, PIBStatus, FlowSensor
 import numpy as np
@@ -38,6 +38,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.clearanceAlt = 10    # m
         self.resumeOn = False
         self.resumeState = 0
+        self.resumeSendingCounter = 0
 
         # Payload Related
         self.agriPayload = AgriPayload(self.isSITL)
@@ -140,7 +141,6 @@ class GA3ACompanionComputer(CompanionComputer):
                             self.agriPayload.maxFlowRate = paramValue
 
                 if recievedMsg.get_type() == "PARAM_REQUEST_READ":
-                    #paramId = recievedMsg.param_id.strip(b"\x00").decode()
                     paramId = recievedMsg.param_id
                     try:
                         paramId = recievedMsg.param_id.replace(b'\x00',b'')
@@ -200,186 +200,178 @@ class GA3ACompanionComputer(CompanionComputer):
             else:
                 time.sleep(0.01)
 
-    # def resume_mission(self):
-    #     sendCount = 10
-    #     logging.info("Resume, %d, %d, %d"%(resumeSendingCounter[0], self.resumeOn, self.resumeState))
-    #     if self.resumeOn:
-    #         # First change to GUIDED mode
-    #         if self.resumeState == 1:
-    #             if mavConnection.flightmode == "GUIDED":
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 2
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system,
-    #                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-    #                                                                    4) # GUIDED
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+    def resume_mission(self):
+        sendCount = 10
+        logging.info("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
+        if self.resumeOn:
+            # First change to GUIDED mode
+            if self.resumeState == 1:
+                if self.currentMode == "GUIDED":
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 2
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                       mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                                       4) # GUIDED
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
 
-    #         # TakeOff
-    #         if self.resumeState == 2:
-    #             if self.relativeAlt > 2:
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 3
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-    #                                                                        mavConnection.target_component,
-    #                                                                        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, # command
-    #                                                                        0, # confirmation
-    #                                                                        0, # param1
-    #                                                                        0, # param2
-    #                                                                        0, # param3
-    #                                                                        0, # param4
-    #                                                                        0, # param5
-    #                                                                        0, # param6
-    #                                                                        3) # param7 (alt)
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # TakeOff
+            if self.resumeState == 2:
+                if self.relativeAlt > 2:
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 3
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_command_long_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                           self.mavlinkInterface.mavConnection.target_component,
+                                                                                                           mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, # command
+                                                                                                           0, # confirmation
+                                                                                                           0, # param1
+                                                                                                           0, # param2
+                                                                                                           0, # param3
+                                                                                                           0, # param4
+                                                                                                           0, # param5
+                                                                                                           0, # param6
+                                                                                                           3) # param7 (alt)
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Goto Clearance Altitude
-    #         if self.resumeState == 3:
-    #             if self.terrainAlt > (self.clearanceAlt-1):
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 4
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
-    #                                                                                          mavConnection.target_system,
-    #                                                                                          mavConnection.target_component,
-    #                                                                                          mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
-    #                                                                                          0b110111111000, # Command Mask, Only position command
-    #                                                                                          int(self.lat*1e7), # LAT
-    #                                                                                          int(self.lon*1e7), # LON
-    #                                                                                          self.clearanceAlt,    # Alt
-    #                                                                                          0,     # vx
-    #                                                                                          0,     # vy
-    #                                                                                          0,     # vz
-    #                                                                                          0,     # ax
-    #                                                                                          0,     # ay
-    #                                                                                          0,     # az
-    #                                                                                          0,     # yaw
-    #                                                                                          0)     # yaw_rate
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Goto Clearance Altitude
+            if self.resumeState == 3:
+                if self.terrainAlt > (self.clearanceAlt-1):
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 4
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
+                                                                                                                             self.mavlinkInterface.mavConnection.target_system,
+                                                                                                                             self.mavlinkInterface.mavConnection.target_component,
+                                                                                                                             mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
+                                                                                                                             0b110111111000, # Command Mask, Only position command
+                                                                                                                             int(self.lat*1e7), # LAT
+                                                                                                                             int(self.lon*1e7), # LON
+                                                                                                                             self.clearanceAlt,    # Alt
+                                                                                                                             0,     # vx
+                                                                                                                             0,     # vy
+                                                                                                                             0,     # vz
+                                                                                                                             0,     # ax
+                                                                                                                             0,     # ay
+                                                                                                                             0,     # az
+                                                                                                                             0,     # yaw
+                                                                                                                             0)     # yaw_rate
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Align heading to mission heading
-    #         if self.resumeState == 4:
-    #             if abs(self.yaw-self.missionYaw) < 5:
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 5
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system,
-    #                                                                        mavConnection.target_component,
-    #                                                                        mavutil.mavlink.MAV_CMD_CONDITION_YAW, # command
-    #                                                                        0,                               # confirmation
-    #                                                                        self.missionYaw,   # param1 (Angle respect to North)
-    #                                                                        30,                              # param2 (rate deg/s)
-    #                                                                        1,                               # param3 (Clockwise)
-    #                                                                        0,                               # param4 (Absolute frame. North is 0)
-    #                                                                        0,                               # param5
-    #                                                                        0,                               # param6
-    #                                                                        0)                               # param7
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Align heading to mission heading
+            if self.resumeState == 4:
+                if abs(self.yaw-self.missionYaw) < 5:
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 5
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_command_long_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                           self.mavlinkInterface.mavConnection.target_component,
+                                                                                                           mavutil.mavlink.MAV_CMD_CONDITION_YAW, # command
+                                                                                                           0,                               # confirmation
+                                                                                                           self.missionYaw,   # param1 (Angle respect to North)
+                                                                                                           30,                              # param2 (rate deg/s)
+                                                                                                           1,                               # param3 (Clockwise)
+                                                                                                           0,                               # param4 (Absolute frame. North is 0)
+                                                                                                           0,                               # param5
+                                                                                                           0,                               # param6
+                                                                                                           0)                               # param7
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Guide to Top of the RTL point
-    #         if self.resumeState == 5:
-    #             if distance(self.RTLLat, self.RTLLon, self.lat, self.lon) < 1:
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 6
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
-    #                                                                                          mavConnection.target_system,
-    #                                                                                          mavConnection.target_component,
-    #                                                                                          mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
-    #                                                                                          0b110111111000, # Command Mask, Only position command
-    #                                                                                          int(self.RTLLat*1e7), # LAT
-    #                                                                                          int(self.RTLLon*1e7), # LON
-    #                                                                                          self.clearanceAlt,    # Alt
-    #                                                                                          0,     # vx
-    #                                                                                          0,     # vy
-    #                                                                                          0,     # vz
-    #                                                                                          0,     # ax
-    #                                                                                          0,     # ay
-    #                                                                                          0,     # az
-    #                                                                                          0,     # yaw
-    #                                                                                          0)     # yaw_rate
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Guide to Top of the RTL point
+            if self.resumeState == 5:
+                if dist_between_lat_lon(self.RTLLat, self.RTLLon, self.lat, self.lon) < 1:
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 6
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
+                                                                                                                             self.mavlinkInterface.mavConnection.target_system,
+                                                                                                                             self.mavlinkInterface.mavConnection.target_component,
+                                                                                                                             mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
+                                                                                                                             0b110111111000, # Command Mask, Only position command
+                                                                                                                             int(self.RTLLat*1e7), # LAT
+                                                                                                                             int(self.RTLLon*1e7), # LON
+                                                                                                                             self.clearanceAlt,    # Alt
+                                                                                                                             0,     # vx
+                                                                                                                             0,     # vy
+                                                                                                                             0,     # vz
+                                                                                                                             0,     # ax
+                                                                                                                             0,     # ay
+                                                                                                                             0,     # az
+                                                                                                                             0,     # yaw
+                                                                                                                             0)     # yaw_rate
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Come down to Actual point
-    #         if self.resumeState == 6:
-    #             if self.terrainAlt < (self.missionAlt+1):
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 7
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
-    #                                                                                          mavConnection.target_system,
-    #                                                                                          mavConnection.target_component,
-    #                                                                                          mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
-    #                                                                                          0b110111111000, # Command Mask, Only position command
-    #                                                                                          int(self.RTLLat*1e7), # LAT
-    #                                                                                          int(self.RTLLon*1e7), # LON
-    #                                                                                          self.missionAlt,    # Alt
-    #                                                                                          0,     # vx
-    #                                                                                          0,     # vy
-    #                                                                                          0,     # vz
-    #                                                                                          0,     # ax
-    #                                                                                          0,     # ay
-    #                                                                                          0,     # az
-    #                                                                                          0,     # yaw
-    #                                                                                          0)     # yaw_rate
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Come down to Actual point
+            if self.resumeState == 6:
+                if self.terrainAlt < (self.missionAlt+1):
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 7
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_position_target_global_int_message(0, # Time from boot (Irrelevant)
+                                                                                                                             self.mavlinkInterface.mavConnection.target_system,
+                                                                                                                             self.mavlinkInterface.mavConnection.target_component,
+                                                                                                                             mavutil.mavlink.MAV_FRAME_GLOBAL_TERRAIN_ALT_INT, # Frame
+                                                                                                                             0b110111111000, # Command Mask, Only position command
+                                                                                                                             int(self.RTLLat*1e7), # LAT
+                                                                                                                             int(self.RTLLon*1e7), # LON
+                                                                                                                             self.missionAlt,    # Alt
+                                                                                                                             0,     # vx
+                                                                                                                             0,     # vy
+                                                                                                                             0,     # vz
+                                                                                                                             0,     # ax
+                                                                                                                             0,     # ay
+                                                                                                                             0,     # az
+                                                                                                                             0,     # yaw
+                                                                                                                             0)     # yaw_rate
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Set Current Waypoint
-    #         if self.resumeState == 7:
-    #             if self.currentWP == self.RTLWP:
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeState = 8
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_mission_set_current_message(mavConnection.target_system,
-    #                                                                               mavConnection.target_component,
-    #                                                                               self.RTLWP)
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Set Current Waypoint
+            if self.resumeState == 7:
+                if self.currentWP == self.RTLWP:
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 8
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_mission_set_current_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                                  self.mavlinkInterface.mavConnection.target_component,
+                                                                                                                  self.RTLWP)
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
-    #         # Engage AUTO mission
-    #         if self.resumeState == 8:
-    #             if mavConnection.flightmode == "AUTO":
-    #                 resumeSendingCounter[0] = 0
-    #                 self.resumeOn = False
-    #                 self.resumeState = 0
-    #             else:
-    #                 if resumeSendingCounter[0] < sendCount:
-    #                     msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system,
-    #                                                                    mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-    #                                                                    3) # AUTO
-    #                     resumeSendingCounter[0] = resumeSendingCounter[0] + 1
-    #                     with lock:
-    #                         msgList.append(msg)
-    #                 return
+            # Engage AUTO mission
+            if self.resumeState == 8:
+                if self.currentMode == "AUTO":
+                    self.resumeSendingCounter = 0
+                    self.resumeOn = False
+                    self.resumeState = 0
+                else:
+                    if self.resumeSendingCounter < sendCount:
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                       self.mavlinkInterface.mavConnection.target_component,
+                                                                                                       3) # AUTO
+                                                              )
+                        self.resumeSendingCounter = self.resumeSendingCounter + 1
+                    return
 
     def write_mission_file(self):
         with open('agri_mission_file', 'w') as f:
@@ -410,8 +402,6 @@ class GA3ACompanionComputer(CompanionComputer):
                     return
 
     def update(self):
-        resumeSendingCounter = [0]
-
         # Rewrite mission file in case of mission is over
         if self.currentWP > self.endWP and (self.RTLWP>0):
             if self.missionOn:
@@ -422,17 +412,17 @@ class GA3ACompanionComputer(CompanionComputer):
 
 
         # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
-        if self.previousMode is 'RTL' and self.currentMode is 'AUTO':
+        if self.previousMode == 'RTL' and self.currentMode == 'AUTO':
             self.RTLLat = self.lat
             self.RTLLon = self.lon
             self.RTLWP = self.currentWP
             self.write_mission_file()
 
         # Resume Mission Handling
-#            resume_mission(mavConnection, mavutil, msgList, lock, resumeSendingCounter)
+        self.resume_mission()
 
-        if self.resumeOn and self.currentMode is not 'GUIDED' and self.resumeState > 1:
-            resumeSendingCounter[0] = 0
+        if self.resumeOn and self.currentMode != 'GUIDED' and self.resumeState > 1:
+            self.resumeSendingCounter = 0
             self.resumeOn = False
             self.resumeState = 0
 
@@ -445,10 +435,10 @@ class GA3ACompanionComputer(CompanionComputer):
             resumeButtonEnable = True
 
         # Payload Status send to GCS
-#        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
-#                                                                                                  0,
-#                                                                                                  self.agriPayload.remainingPayload,
-#                                                                                                  int(resumeButtonEnable)))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
+                                                                                                  0,
+                                                                                                  self.agriPayload.remainingPayload,
+                                                                                                  int(resumeButtonEnable)))
 
         # Update Mode
         self.previousMode = self.currentMode
@@ -463,3 +453,4 @@ class GA3ACompanionComputer(CompanionComputer):
 #
         self.handleRecievedMsgThread.join()
         logging.info("GA3ACompanionComputer joined all threads")
+        
