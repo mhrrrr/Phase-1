@@ -16,28 +16,22 @@ class AgriPayload:
     def __init__(self, isSITL):  
         self.isSITL = isSITL
         
-        self.nozzleConfig = 0b00111100
-        self.actualNozzRPM = 0
         self.actualFlowRate = 0     # LPM
         self.pesticidePerAcre = 5   # Litre/Acre
         self.swath = 4              # m
         self.maxFlowRate = 1.2      # Litre/Minute
         
-        # PIB Input
-        self.pumpPWM = 0
-        self.micromiserPWM = 0
-        
         # Status
         self.remainingPayload = 15                   # in liters
-        self.reqFlowRate = 0.                           # in ltr/min
+        self.reqFlowRate = 0.                        # in ltr/min
         self.shouldSpraying = False
         
         # pump parameters
-        self.pumpMaxPWM = 1999
+        self.pumpMaxPWM = 2000
         self.pumpMinPWM = 1200
         self.pumpAbsMinPWM = 1000
         self.pumpMaxFlowRate = 1.4                  # in ltr/min
-        self.pumpMinFlowRate = 0                  # in ltr/min
+        self.pumpMinFlowRate = 0                    # in ltr/min
         self.pumpPWM = 0
         
         # Nozzle parameters
@@ -53,11 +47,17 @@ class AgriPayload:
         
         # Counter to send the speed to autopilot
         self.maxSpeedSentCount = 0
+        self.maxSpeed = 5                   # m/s
 
         # GPIO handling
         if not isSITL:
             import pigpio
             self.pi = pigpio.pi()
+            
+            # Initialize Sensor handling class
+            self.pibStatus = PIBStatus('/dev/ttyDCU')
+            self.flowSensor = FlowSensor(pigpio)
+
         self.pumpPin = 18
         self.nozzPin = 19
 
@@ -78,129 +78,100 @@ class AgriPayload:
         # Debug Timer
         self.debugTime = time.time()
         
-#    def calc_remaining_payload(self, actualFlowRate):
-#        if self.remainingPayload > 0:
-#            self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
-#            
-#    def update_time(self):
-#        currTime = time.time() 
-#        self.dt = currTime - self.time
-#        self.time = currTime
+    def update_remaining_payload(self, actualFlowRate):
+        if self.remainingPayload > 0:
+            self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
+            
+    def update_time(self):
+        currTime = time.time() 
+        self.dt = currTime - self.time
+        self.time = currTime
         
-    def update(self, testing): #dataStorageAgri, mavConnection, mavutil, msgList, lock):        
-#        # update timer
-#        self.update_time()
-#        
-#        # calculate speed of the vehicle
-#        speed = calc_speed(dataStorageAgri, lock)
-#        
-#        # RPM
-#        actualRPM = dataStorageAgri['actualNozzRPM']
-#        
-#        # actual flow rate
-#        actualFlowRate = dataStorageAgri['actualFlowRate']
-#        
-#        # Are we testing
-#        testing = dataStorageAgri['testing']
-
-#        # check whether we should be spraying
-#        logging.info("WP, %d, %d, %d, %s"%(dataStorageAgri['startWP'], dataStorageAgri['currentWP'], dataStorageAgri['endWP'], mavConnection.flightmode))
-#        if dataStorageAgri['currentWP'] <= dataStorageAgri['endWP'] and dataStorageAgri['currentWP'] > dataStorageAgri['startWP'] and dataStorageAgri['endWP']>1 and mavConnection.flightmode == 'AUTO':
-#            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
-#            if not self.shouldSpraying:
-#                self.maxSpeedSentCount = 0
-#                
-#            self.shouldSpraying = True
-#            # Set correct top speed of vehicle
-#            self.set_vehicle_max_speed(dataStorageAgri, mavConnection, mavutil, msgList, lock)
-#            
-#            # Payload Over RTL
-#            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and dataStorageAgri['remainingPayload'] < 2:
-#                if (time.time() - self.payloadOverStartTime) > 2:
-#                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
-#                                                                   mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-#                                                                   6) # RTL
-#                    with lock:
-#                        msgList.append(msg)
-#            else:
-#                self.payloadOverStartTime = time.time()
-#            
-#        else:
-#            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
-#            if self.shouldSpraying:
-#                self.maxSpeedSentCount = 0
-#                
-#            self.shouldSpraying = False
-#            # send the message 3 times to be sure message reaches autopilot
-#            if (self.maxSpeedSentCount < 3):
-#                # create message
-#                msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-#                                                                   mavConnection.target_component,
-#                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
-#                                                                   0, # confirmation
-#                                                                   0, # param1 
-#                                                                   9, # param2 
-#                                                                   0, # param3
-#                                                                   0, # param4
-#                                                                   0, # param5
-#                                                                   0, # param6
-#                                                                   0) # param7
-#                
-#                with lock:
-#                    # append message to send list
-#                    msgList.append(msg)
-#                
-#                # update counter
-#                self.maxSpeedSentCount = self.maxSpeedSentCount + 1
-#        
-#        if self.shouldSpraying:
-#            # calculate flow rate
-#            self.calc_flow_rate(dataStorageAgri, speed)
-#            
-#            # calculate pwm for pump and nozzle
-#            self.calc_pump_pwm(actualFlowRate)
-#            self.calc_nozz_pwm(actualRPM)
-#            
-#        else:
-        if testing:
-            self.nozzPWM = 1999
-            #self.pumpPWM = 1400
-##                currTime = time.time()
-##                deltaTime = currTime - self.debugTime
-##                if deltaTime < 50:
-##                    self.reqFlowRate = min(1.2, 0.6+ 0.2*deltaTime)
-##                elif deltaTime < 30:
-##                    self.reqFlowRate = 0.4
-##                elif deltaTime < 50:
-##                    self.reqFlowRate = 1.2
-##                elif deltaTime < 60:
-##                    self.reqFlowRate = 0.6
-##                else:
-##                    self.debugTime = currTime
-#            self.reqFlowRate = 1.2
+    def update(self, testing, speed, startWP, endWP, currentWP, flightMode):
+        # update timer
+        self.update_time()
+        
+        # RPM
+        actualRPM = 0 #self.pibStatus.status['ATOMIZER_RPM']
+        
+        # actual flow rate
+        actualFlowRate = self.flowSensor.flowRate
+        
+        # check whether we should be spraying
+        logging.info("WP, %d, %d, %d"%(startWP, currentWP, endWP))
+        if currentWP <= endWP and currentWP > startWP and endWP > 1 and flightMode == 'AUTO':
+            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
+            if not self.shouldSpraying:
+                self.maxSpeedSentCount = 0
                 
-#            self.calc_pump_pwm(actualFlowRate)
-            self.pumpPWM = 1400
+            self.shouldSpraying = True
+            # Set correct top speed of vehicle
+            self.set_vehicle_max_speed()
+            
+            # Payload Over RTL
+            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and self.remainingPayload < 2:
+                if (time.time() - self.payloadOverStartTime) > 2:
+                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
+                                                                  mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                  6) # RTL
+            else:
+                self.payloadOverStartTime = time.time()
+            
         else:
-            self.nozzPWM = self.nozzMinPWM
-            self.pumpPWM = self.pumpAbsMinPWM
-            self.reqFlowRate = 0
+            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
+            if self.shouldSpraying:
+                self.maxSpeedSentCount = 0
+                
+            self.shouldSpraying = False
+            # send the message 3 times to be sure message reaches autopilot
+            if (self.maxSpeedSentCount < 3):
+                # create message
+                msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
+                                                                  mavConnection.target_component,
+                                                                  mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
+                                                                  0, # confirmation
+                                                                  0, # param1 
+                                                                  9, # param2 
+                                                                  0, # param3
+                                                                  0, # param4
+                                                                  0, # param5
+                                                                  0, # param6
+                                                                  0) # param7
+                
+                # update counter
+                self.maxSpeedSentCount = self.maxSpeedSentCount + 1
+        
+        if self.shouldSpraying:
+            # calculate flow rate
+            self.calc_flow_rate(speed)
+            
+            # calculate pwm for pump and nozzle
+            self.calc_pump_pwm(actualFlowRate)
+            self.calc_nozz_pwm(actualRPM)
+            
+        else:
+            if testing:
+                self.nozzPWM = 1999
+                #self.pumpPWM = 1400
+                self.reqFlowRate = 1.2
+                    
+                self.calc_pump_pwm(actualFlowRate)
+            else:
+                self.nozzPWM = self.nozzMinPWM
+                self.pumpPWM = self.pumpAbsMinPWM
+                self.reqFlowRate = 0
                 
         # update the pwm in DCU
         self.update_pwm()
 
         # update the remaining payload
-        
-#        self.remainingPayload = dataStorageAgri['remainingPayload']
-#        self.calc_remaining_payload(actualFlowRate)
-#        with lock:
-#            dataStorageAgri['remainingPayload'] = self.remainingPayload
+        self.update_remaining_payload(actualFlowRate)
             
-#        logging.info("FlowRate, %f, %f"%(self.reqFlowRate, actualFlowRate))
+        logging.info("FlowRate, %f, %f"%(self.reqFlowRate, actualFlowRate))
         logging.info("FlowPWM, %d, %d"%(self.nozzPWM, self.pumpPWM))
-#        logging.info("RemPayload, %f"%(self.remainingPayload))
+        logging.info("RemPayload, %f"%(self.remainingPayload))
         
-    def calc_flow_rate(self, dataStorageAgri, speed):
+    def calc_flow_rate(self, speed):
         # sanity check of speed
         if (speed < 0):
             speed = 0
@@ -208,26 +179,17 @@ class AgriPayload:
             speed = self.maxSpeed+1
         
         # Calculate flow rate
-        sprayDensity = dataStorageAgri['pesticidePerAcre']/4047.
-        self.reqFlowRate = 60*dataStorageAgri['swath']*sprayDensity*speed
+        sprayDensity = self.pesticidePerAcre/4047.          # Ltr/m^2
+        self.reqFlowRate = 60*self.swath*sprayDensity*speed # Ltr/min
 
         
         # check flow rate limit
-        if self.reqFlowRate > dataStorageAgri['maxFlowRate']:
-            self.reqFlowRate = dataStorageAgri['maxFlowRate']
+        if self.reqFlowRate > self.maxFlowRate:
+            self.reqFlowRate = self.maxFlowRate
         if self.reqFlowRate < self.pumpMinFlowRate:
             self.reqFlowRate = self.pumpMinFlowRate
             
     def calc_pump_pwm(self, actualFlowRate):
-##        if abs(self.reqFlowRate - actualFlowRate) > 0.25:
-##            pumpPWM = int(self.pumpPWM + 100 * (self.reqFlowRate - actualFlowRate))
-##        elif abs(self.reqFlowRate - actualFlowRate) > 0.1:
-##            pumpPWM = int(self.pumpPWM + 50 * (self.reqFlowRate - actualFlowRate))
-##        elif abs(self.reqFlowRate - actualFlowRate) > 0.01:
-##            pumpPWM = int(self.pumpPWM + 50 * (self.reqFlowRate - actualFlowRate))
-##        else:
-##            pumpPWM = self.pumpPWM
-
         # P
         error = (self.reqFlowRate - actualFlowRate)
         pumpPWM = int(self.pumpPWM + self.pumpP * error)
@@ -246,7 +208,7 @@ class AgriPayload:
             self.pumpIntError = -self.pumpIMax/self.pumpI
         pumpPWM = int(pumpPWM + self.pumpI * self.pumpIntError)
 
-        logging.debug("PID, %f, %f, %f, %f, %f"%(error, self.pumpIntError, self.pumpP * error, self.pumpI * self.pumpIntError, self.pumpD * dError))
+        logging.debug("Pump PID, %f, %f, %f, %f, %f"%(error, self.pumpIntError, self.pumpP * error, self.pumpI * self.pumpIntError, self.pumpD * dError))
         
         self.pumpPWM = pumpPWM
         if self.pumpPWM > self.pumpMaxPWM:
@@ -289,47 +251,16 @@ class AgriPayload:
             if self.nozzPWM < self.nozzMinPWM:
                 self.nozzPWM = self.nozzMinPWM
     
-    def set_vehicle_max_speed(self, dataStorageAgri, mavConnection, mavutil, msgList, lock):
-        # send the message 3 times to be sure message reaches autopilot
-        if (self.maxSpeedSentCount < 3):
-            # calculate max speed of vehicle
-            sprayDensity = dataStorageAgri['pesticidePerAcre']/4047.
-            self.maxSpeed = dataStorageAgri['maxFlowRate']/60./dataStorageAgri['swath']/sprayDensity + 0.15
-            
-            if self.maxSpeed > 8:
-                self.maxSpeed = 8
-
-            # create message
-            msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-                                                                   mavConnection.target_component,
-                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
-                                                                   0, # confirmation
-                                                                   0, # param1 
-                                                                   self.maxSpeed, # param2 
-                                                                   0, # param3
-                                                                   0, # param4
-                                                                   0, # param5
-                                                                   0, # param6
-                                                                   0) # param7
-            
-            with lock:
-                # append message to send list
-                msgList.append(msg)
-            
-            # update counter
-            self.maxSpeedSentCount = self.maxSpeedSentCount + 1
-            
-    
     def update_pwm(self):
         # Redundant check to prevent unrealistic value to go to the FCS
-        if self.nozzPWM > 2000:
-            self.nozzPWM = 2000
-        if self.nozzPWM < 1000:
-            self.nozzPWM = 1000
-        if self.pumpPWM > 2000:
-            self.pumpPWM = 2000
-        if self.pumpPWM < 1000:
-            self.pumpPWM = 1000
+        if self.nozzPWM > self.nozzMaxPWM:
+            self.nozzPWM = self.nozzMaxPWM
+        if self.nozzPWM < self.nozzMinPWM:
+            self.nozzPWM = self.nozzMinPWM
+        if self.pumpPWM > self.pumpMaxPWM:
+            self.pumpPWM = self.pumpMaxPWM
+        if self.pumpPWM < self.pumpAbsMinPWM:
+            self.pumpPWM = self.pumpAbsMinPWM
 
         if not self.isSITL:
             self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
@@ -387,45 +318,31 @@ class PIBStatus:
         self.init()
         
     def init(self):
-        if not dataStorageCommon['isSITL']:
-            while True:
-                # keep trying  to open port unitl succesful
-                try:
-                    time.sleep(1)
-                    self.ser = serial.Serial(port=self.serial,
-                                             baudrate=115200,
-                                             parity=serial.PARITY_ODD,
-                                             stopbits=serial.STOPBITS_ONE,
-                                             bytesize=serial.EIGHTBITS,
-                                             timeout=1)
-                    break
-                except KeyboardInterrupt:
-                    raise KeyboardInterrupt
-            self.send_nozzle_config()
+        while True:
+            # keep trying  to open port unitl succesful
+            try:
+                time.sleep(1)
+                self.ser = serial.Serial(port=self.serial,
+                                         baudrate=115200,
+                                         parity=serial.PARITY_ODD,
+                                         stopbits=serial.STOPBITS_ONE,
+                                         bytesize=serial.EIGHTBITS,
+                                         timeout=1)
+                break
+            except KeyboardInterrupt:
+                raise KeyboardInterrupt
+        self.send_nozzle_config()
                 
-    def update(self, dataStorageAgri, lock):
-        if not dataStorageCommon['isSITL']:
-            # read the data
-            data = self.ser.readline()
-            self.ser.reset_input_buffer()
+    def update(self):
+        # read the data
+        data = self.ser.readline()
+        self.ser.reset_input_buffer()
 
 
-            # update the status
-            self.decode_data(data)
-            
-            # transfer data to dataStorageAgri
-            #self.update_veh_data(dataStorageAgri, lock)
-    
-            # Send the nozzle configuration
-            #if dataStorageAgri['NozzleConfig'] != self.nozzleConfiguration:
-            self.set_nozzle_config(dataStorageAgri['NozzleConfig'])
-            self.send_nozzle_config()
-            
-    def update_veh_data(self, dataStorageAgri, lock):
-        with lock:
-            dataStorageAgri['actualFlowRate'] = ((self.status['FLOW_METER_READING'][1] - 9.3438)/84.413) * 2./5. - 0.07
-            if dataStorageAgri['actualFlowRate'] < 0:
-                dataStorageAgri['actualFlowRate'] = 0
+        # update the status
+        self.decode_data(data)
+
+        self.send_nozzle_config()
 
     def decode_data(self, data):
         
@@ -531,11 +448,6 @@ class PIBStatus:
             logging.info("FMReading, %f, %f"
                          %(self.status['FLOW_METER_READING'][0], 
                            self.status['FLOW_METER_READING'][1]))
-            
-    def set_nozzle_config(self, val):
-        # check value is withing 1 byte limit of int
-        if (val<256):
-            self.nozzleConfiguration = val
     
     def send_nozzle_config(self):
         # check serial port is properly open
@@ -547,58 +459,74 @@ class PIBStatus:
                 self.ser.write(packedData)
 
 class FlowSensor:
-    def __init__(self, isSITL, pin=11):
+    # This handles pulse based flow sensors
+    def __init__(self, pigpio, pin=11):
         self.pin = pin
         self.count = 0
         self.countList = [0]*10
-        if not isSITL:
-            self.pi = pigpio.pi()
-            self.pi.set_mode(self.pin, pigpio.INPUT)
-            self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
+        
+        self.pi = pigpio.pi()
+        self.pi.set_mode(self.pin, pigpio.INPUT)
+        self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
+            
+        self.flowRate = 0
    
     def counter(self,g,l,t):
+        # Increase count by 1 when pulse arrives
         self.count = self.count + 1
        
-    def calc_flow_rate(self, dataStorageAgri, lock):
+    def calc_flow_rate(self):
+        # This function will be called at 5 Hz
         count = self.count
+        
+        # Reset the counter after every 0.2s (5 Hz)
         self.count = 0
+        
         actualFlowrate = 0
+        
+        # Don't record very low flowrate as it can be errorneous
         if count > 6:
+            # update the queue with new reading
             self.countList[:-1] = self.countList[1:]
             self.countList[-1] = count
             
-            logging.info("count, %s"%(','.join([str(elem) for elem in self.countList]) ))
+            # Log the countlist
+            logging.info("FLowSensor Count, %s"%(','.join([str(elem) for elem in self.countList])))
+            
+            # Use linear model to convert pulse count to flow rate
             a5Hz = 17.195 * 5
             a1Hz = a5Hz/5
             a05Hz = a5Hz/10
             b = -139.97
             flowRate5Hz = a5Hz*self.countList[-1] + b
-        
             flowRate1Hz = a1Hz*(sum(self.countList[5:])) + b
             flowRate05Hz = a05Hz*(sum(self.countList[:])) + b
 
+            # Sort the queue
             sortedCountList1Hz = copy.deepcopy(self.countList[5:])
             sortedCountList05Hz = copy.deepcopy(self.countList[:])
             sortedCountList1Hz.sort()
             sortedCountList05Hz.sort()
+            
+            # First set the flow rate to the instantaneous flow rate 
             actualFlowrate = flowRate5Hz
+            
+            # Instantaneous flow will be oscillating quite a lot and may cause 
+            # issue in contoller. One way to avoid is to have low pass filter.
+            # But low pass filter can cause slow response when fast response is 
+            # required. This method ensures that till the certain point low pass
+            # average filter is applied but beyond certain point it will be 
+            # instantaneous reading
             if abs(sortedCountList1Hz[0]-sortedCountList1Hz[-1]) < 3:
                 actualFlowrate = flowRate1Hz
             if abs(sortedCountList05Hz[0]-sortedCountList05Hz[-1]) < 3:
                 actualFlowrate = flowRate05Hz
             
-            # handling sudden spikes
-            if (flowRate5Hz/1000) > 2 and abs(flowRate5Hz/1000 - dataStorageAgri['actualFlowRate']) > 2:
-                actualFlowrate = dataStorageAgri['actualFlowRate']/0.98*1000
-        with lock:
-            dataStorageAgri['actualFlowRate'] = 0.98*actualFlowrate/1000.
+            # handling sudden spikes. User previous reading in case of spike
+            if abs(flowRate5Hz/1000 - self.flowRate) < 2:
+                self.flowRate = 0.98*actualFlowrate/1000.
         
 class OnlineHealthMonitor:
     def __init__(self):
         pass        
-        
-def calc_speed(dataStorageAgri, lock):
-    with lock:
-        speed = np.sqrt(dataStorageAgri['vx']**2+dataStorageAgri['vy']**2)
-    return speed
         

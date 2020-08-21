@@ -10,7 +10,7 @@ Created on Wed Mar 06 16:02:00 2019
 import time
 from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask, State
 import logging
-from util.ga3apayloadutil import AgriPayload#, PIBStatus, FlowSensor
+from util.ga3apayloadutil import AgriPayload, PIBStatus, FlowSensor
 import numpy as np
 import sys
 import threading
@@ -61,19 +61,11 @@ class GA3ACompanionComputer(CompanionComputer):
 
         # Start Agri Loop
         self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
-
-        # Record Home Location
-#        if not self.isSITL:
-#            # Initialize Sensor handling class
-#            pibStatus = PIBStatus('/dev/ttyDCU')
-#            flowSensor = FlowSensor(self.isSITL)
-#
-#            # Schedule the tasks
-#            self.scheduledTaskList.append(ScheduleTask(0.15, pibStatus.update))
-#            self.scheduledTaskList.append(ScheduleTask(0.2, flowSensor.calc_flow_rate))
-#
-#        else:
-#            pass
+        
+        # Schedule the payload sensors readings
+        if not self.isSITL:
+            self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
+            self.scheduledTaskList.append(ScheduleTask(0.2, self.agriPayload.flowSensor.calc_flow_rate))
 
         while True:
             time.sleep(1)
@@ -129,7 +121,7 @@ class GA3ACompanionComputer(CompanionComputer):
                             self.agriPayload.remainingPayload = paramValue
                     if paramId == "CLEARANCE_ALT":
                         if paramValue > 200 and paramValue < 4000:
-                            self.agriPayload.clearanceAlt = paramValue/100.
+                            self.clearanceAlt = paramValue/100.
                     if paramId == "PESTI_PER_ACRE":
                         if paramValue > 1 and paramValue < 20:
                             self.agriPayload.pesticidePerAcre = paramValue
@@ -155,7 +147,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                           1))
                     if paramId == "CLEARANCE_ALT":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
-                                                                                                          int(self.agriPayload.clearanceAlt*100),
+                                                                                                          int(self.clearanceAlt*100),
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
                                                                                                           5,
                                                                                                           2))
@@ -427,7 +419,7 @@ class GA3ACompanionComputer(CompanionComputer):
             self.resumeState = 0
 
         # update the required flow rate to the agri payload handlere
-        self.agriPayload.update(self.testing)
+        self.agriPayload.update(self.testing, self.speed, self.startWP, self.endWP, self.currentWP, self.currentMode)
 
         # send the data to GCS
         resumeButtonEnable = False
@@ -442,6 +434,32 @@ class GA3ACompanionComputer(CompanionComputer):
 
         # Update Mode
         self.previousMode = self.currentMode
+        
+    def update_vehicle_max_speed(self):
+        # send the message 3 times to be sure message reaches autopilot
+        if (self.maxSpeedSentCount < 3):
+            # calculate max speed of vehicle
+            sprayDensity = self.agriPayload.pesticidePerAcre/4047.
+            self.maxSpeed = self.agriPayload.maxFlowRate/60./self.agriPayload.swath/sprayDensity + 0.15
+            
+            if self.maxSpeed > 8:
+                self.maxSpeed = 8
+
+            # create message
+            msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
+                                                                   mavConnection.target_component,
+                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
+                                                                   0,                                       # confirmation
+                                                                   0,                                       # param1 
+                                                                   self.maxSpeed,                           # param2 
+                                                                   0,                                       # param3
+                                                                   0,                                       # param4
+                                                                   0,                                       # param5
+                                                                   0,                                       # param6
+                                                                   0)                                       # param7
+            
+            # update counter
+            self.maxSpeedSentCount = self.maxSpeedSentCount + 1
 
     def kill_all_threads(self):
         logging.info("GA3ACompanionComputer killing all threads")

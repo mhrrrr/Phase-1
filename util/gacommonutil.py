@@ -49,8 +49,9 @@ class CompanionComputer(object):
 
         # Vehicle Speed
         self.vx = 0 # m/s
-        self.vy = 0 # m/
+        self.vy = 0 # m/s
         self.vz = 0 # m/s
+        self.speed = 0 # m/s
 
         # Attitude
         self.pitch = 0 # rad (-pi to pi)
@@ -141,6 +142,7 @@ class CompanionComputer(object):
             self.vx = 0.01*recievedMsg.vx
             self.vy = 0.01*recievedMsg.vy
             self.vz = 0.01*recievedMsg.vz
+            self.speed = np.sqrt(self.vx**2 + self.vy**2 + self.vz**2)
             self.relativeAlt = recievedMsg.relative_alt/1000.
             return
 
