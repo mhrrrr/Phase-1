@@ -22,7 +22,7 @@ class AgriPayload:
         self.maxFlowRate = 1.2      # Litre/Minute
         
         # Status
-        self.remainingPayload = 15                   # in liters
+        self.remainingPayload = 10                   # in liters
         self.reqFlowRate = 0.                        # in ltr/min
         self.shouldSpraying = False
         
@@ -46,8 +46,7 @@ class AgriPayload:
         self.nozzP = 0.01
         
         # Counter to send the speed to autopilot
-        self.maxSpeedSentCount = 0
-        self.maxSpeed = 5                   # m/s
+        self.maxSpeedSetPoint = 5                   # m/s
 
         # GPIO handling
         if not isSITL:
@@ -57,6 +56,8 @@ class AgriPayload:
             # Initialize Sensor handling class
             self.pibStatus = PIBStatus('/dev/ttyDCU')
             self.flowSensor = FlowSensor(pigpio)
+        else:
+            self.flowSensor = None
 
         self.pumpPin = 18
         self.nozzPin = 19
@@ -95,7 +96,10 @@ class AgriPayload:
         actualRPM = 0 #self.pibStatus.status['ATOMIZER_RPM']
         
         # actual flow rate
-        actualFlowRate = self.flowSensor.flowRate
+        if self.flowSensor:
+            actualFlowRate = self.flowSensor.flowRate
+        else:
+            actualFlowRate = 0.5
         
         # check whether we should be spraying
         logging.info("WP, %d, %d, %d"%(startWP, currentWP, endWP))
@@ -106,40 +110,22 @@ class AgriPayload:
                 
             self.shouldSpraying = True
             # Set correct top speed of vehicle
-            self.set_vehicle_max_speed()
+            sprayDensity = self.pesticidePerAcre/4047.
+            self.maxSpeedSetPoint = self.maxFlowRate/60./self.swath/sprayDensity + 0.15
             
             # Payload Over RTL
-            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and self.remainingPayload < 2:
-                if (time.time() - self.payloadOverStartTime) > 2:
-                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
-                                                                  mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-                                                                  6) # RTL
-            else:
-                self.payloadOverStartTime = time.time()
+#            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and self.remainingPayload < 2:
+#                if (time.time() - self.payloadOverStartTime) > 2:
+#                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
+#                                                                  mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+#                                                                  6) # RTL
+#            else:
+#                self.payloadOverStartTime = time.time()
             
         else:
-            # Allow sending max speed again to vehicle if the shouldSpraying state have changed
-            if self.shouldSpraying:
-                self.maxSpeedSentCount = 0
-                
             self.shouldSpraying = False
-            # send the message 3 times to be sure message reaches autopilot
-            if (self.maxSpeedSentCount < 3):
-                # create message
-                msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-                                                                  mavConnection.target_component,
-                                                                  mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
-                                                                  0, # confirmation
-                                                                  0, # param1 
-                                                                  9, # param2 
-                                                                  0, # param3
-                                                                  0, # param4
-                                                                  0, # param5
-                                                                  0, # param6
-                                                                  0) # param7
-                
-                # update counter
-                self.maxSpeedSentCount = self.maxSpeedSentCount + 1
+            # Change the max speed setpoint
+            self.maxSpeedSetPoint = 8
         
         if self.shouldSpraying:
             # calculate flow rate
@@ -175,8 +161,8 @@ class AgriPayload:
         # sanity check of speed
         if (speed < 0):
             speed = 0
-        if (speed > (self.maxSpeed+1)):
-            speed = self.maxSpeed+1
+        if (speed >= self.maxSpeedSetPoint+1):
+            speed = self.maxSpeedSetPoint+1
         
         # Calculate flow rate
         sprayDensity = self.pesticidePerAcre/4047.          # Ltr/m^2

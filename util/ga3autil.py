@@ -42,6 +42,8 @@ class GA3ACompanionComputer(CompanionComputer):
 
         # Payload Related
         self.agriPayload = AgriPayload(self.isSITL)
+        self.maxSpeed = 5 # m/s
+        self.maxSpeedCount = 0
 
         # Agri Specific vehicle status
         self.testing = False
@@ -196,19 +198,26 @@ class GA3ACompanionComputer(CompanionComputer):
         sendCount = 10
         logging.info("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
         if self.resumeOn:
-            # First change to GUIDED mode
-            if self.resumeState == 1:
-                if self.currentMode == "GUIDED":
-                    self.resumeSendingCounter = 0
-                    self.resumeState = 2
-                else:
-                    if self.resumeSendingCounter < sendCount:
-                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
-                                                                                                       mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-                                                                                                       4) # GUIDED
-                                                              )
-                        self.resumeSendingCounter = self.resumeSendingCounter + 1
-                    return
+            # Check vehicle is armed or not
+            if self.isArmed:
+                # First change to GUIDED mode
+                if self.resumeState == 1:
+                    if self.currentMode == "GUIDED":
+                        self.resumeSendingCounter = 0
+                        self.resumeState = 2
+                    else:
+                        if self.resumeSendingCounter < sendCount:
+                            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                                           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                                           4) # GUIDED
+                                                                  )
+                            self.resumeSendingCounter = self.resumeSendingCounter + 1
+                        return
+            else:
+                # If not armed, Go out of resume state
+                self.resumeSendingCounter = 0
+                self.resumeOn = False
+                self.resumeState = 0
 
 
             # TakeOff
@@ -436,27 +445,29 @@ class GA3ACompanionComputer(CompanionComputer):
         self.previousMode = self.currentMode
         
     def update_vehicle_max_speed(self):
+        
+        if self.maxSpeed != self.agriPayload.maxSpeedSetPoint:
+            self.maxSpeedSentCount = 0
+            self.maxSpeed = self.agriPayload.maxSpeedSetPoint
+            
         # send the message 3 times to be sure message reaches autopilot
         if (self.maxSpeedSentCount < 3):
-            # calculate max speed of vehicle
-            sprayDensity = self.agriPayload.pesticidePerAcre/4047.
-            self.maxSpeed = self.agriPayload.maxFlowRate/60./self.agriPayload.swath/sprayDensity + 0.15
-            
-            if self.maxSpeed > 8:
+            if self.maxSpeed >= 8:
                 self.maxSpeed = 8
 
             # create message
-            msg = mavutil.mavlink.MAVLink_command_long_message(mavConnection.target_system, 
-                                                                   mavConnection.target_component,
-                                                                   mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
-                                                                   0,                                       # confirmation
-                                                                   0,                                       # param1 
-                                                                   self.maxSpeed,                           # param2 
-                                                                   0,                                       # param3
-                                                                   0,                                       # param4
-                                                                   0,                                       # param5
-                                                                   0,                                       # param6
-                                                                   0)                                       # param7
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_command_long_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                               self.mavlinkInterface.mavConnection.target_component,
+                                                                                               mavutil.mavlink.MAV_CMD_DO_CHANGE_SPEED, # command
+                                                                                               0,                                       # confirmation
+                                                                                               0,                                       # param1 
+                                                                                               self.maxSpeed,                           # param2 
+                                                                                               0,                                       # param3
+                                                                                               0,                                       # param4
+                                                                                               0,                                       # param5
+                                                                                               0,                                       # param6
+                                                                                               0)                                       # param7
+                                                 )
             
             # update counter
             self.maxSpeedSentCount = self.maxSpeedSentCount + 1
