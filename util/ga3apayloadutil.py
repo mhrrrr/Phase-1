@@ -205,7 +205,7 @@ class AgriPayload:
     def calc_nozz_pwm(self, actualRPM):
         
         if self.nozzType == 'Micromiser':
-            self.nozzPWM = self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate)
+            self.nozzPWM = int(self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate))
 ##            # handle garbage value
 ##            if actualRPM < 0:
 ##                actualRPM = 0
@@ -324,8 +324,6 @@ class PIBStatus:
         data = self.ser.readline()
         self.ser.reset_input_buffer()
 
-
-        # update the status
         self.decode_data(data)
 
         self.send_nozzle_config()
@@ -379,7 +377,7 @@ class PIBStatus:
         # first character not being $
         # length of data not matching to any of the packet size expected by us
         # second character is out of bound of acceptable function codes
-        if (data[0] == '$') and (dataLength in acceptedLengths) and (int(data[1])<8):
+        if (data[0] == ord('$')) and (dataLength in acceptedLengths) and (data[1]<ord('8')):
             self.errorNow['WRONG_DATA'] = False
             
             if dataLength == 3:
@@ -441,7 +439,7 @@ class PIBStatus:
             if self.ser.isOpen():
                 data = [ord('$'), self.functionCode['MSG3'], self.nozzleConfiguration]
                 lrc = self.calc_lrc(data)
-                packedData = struct.pack('cbbbc', '$', self.functionCode['MSG3'], self.nozzleConfiguration, lrc, '\n')
+                packedData = struct.pack('cbbbc', '$'.encode(), self.functionCode['MSG3'], self.nozzleConfiguration, lrc, '\n'.encode())
                 self.ser.write(packedData)
 
 class FlowSensor:
@@ -511,6 +509,8 @@ class FlowSensor:
             # handling sudden spikes. User previous reading in case of spike
             if abs(flowRate5Hz/1000 - self.flowRate) < 2:
                 self.flowRate = 0.98*actualFlowrate/1000.
+        else:
+            self.flowRate=0
         
 class OnlineHealthMonitor:
     def __init__(self):
