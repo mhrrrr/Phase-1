@@ -25,6 +25,8 @@ class AgriPayload:
         self.remainingPayload = 10                   # in liters
         self.reqFlowRate = 0.                        # in ltr/min
         self.shouldSpraying = False
+        self.payloadRTLEngage = False
+        self.payloadRTLEnabled = False
         
         # pump parameters
         self.pumpMaxPWM = 2000
@@ -37,7 +39,7 @@ class AgriPayload:
         # Nozzle parameters
         self.nozzMaxPWM = 2000
         self.nozzMinPWM = 1000
-        self.targetPS = 120                 # Particle Size in micrometer
+        self.targetPS = 100                 # Particle Size in micrometer
         self.nozzPWM = 0                    # Current PWM of Nozzle
         self.nozzNum = 4                    # number of nozzles
         self.nozzMaxFlowRate = 0.7          # in ltr/min
@@ -114,13 +116,11 @@ class AgriPayload:
             self.maxSpeedSetPoint = self.maxFlowRate/60./self.swath/sprayDensity + 0.15
             
             # Payload Over RTL
-#            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1600 and self.remainingPayload < 2:
-#                if (time.time() - self.payloadOverStartTime) > 2:
-#                    msg = mavutil.mavlink.MAVLink_set_mode_message(mavConnection.target_system, 
-#                                                                  mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-#                                                                  6) # RTL
-#            else:
-#                self.payloadOverStartTime = time.time()
+            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1800 and self.remainingPayload < 2:
+                if (time.time() - self.payloadOverStartTime) > 2:
+                    self.payloadRTLEngage = True
+            else:
+                self.payloadOverStartTime = time.time()
             
         else:
             self.shouldSpraying = False
@@ -140,7 +140,7 @@ class AgriPayload:
                 # self.nozzPWM = 1999
                 # self.pumpPWM = 1400
                 self.reqFlowRate = 1.2
-                self.targetPS = 60
+                self.targetPS = 100
                     
                 self.calc_pump_pwm(actualFlowRate)
                 self.calc_nozz_pwm(actualRPM)

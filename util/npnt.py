@@ -44,7 +44,7 @@ class NPNT(object):
         
         # NPNT Status
         self.__npntAllowed = False
-        self.__npntNotAllowedReason = b'RPAS Tampered'
+        self.__npntNotAllowedReason = 'RPAS Tampered'.encode()
         
         # State Machine NPNT
         self.state = VehicleTamperedState()
@@ -394,7 +394,7 @@ class NPNT(object):
     def update(self, lat, lon, globalAlt, hdop, globalTime, isArmed, latestUploadedPAFileName):
         if str(self.state) is str(VehicleTamperedState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'RPAS Tampered'
+            self.__npntNotAllowedReason = 'RPAS Tampered'.encode()
             
             if self.vtds.check_code():
                 self.state = self.state.on_event("VTDS code recieved")
@@ -404,7 +404,7 @@ class NPNT(object):
                 
         if str(self.state) is str(VehicleNotRegisteredState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'RPAS is not registered'
+            self.__npntNotAllowedReason = 'RPAS is not registered'.encode()
             
             if self.uin:
                 self.state = self.state.on_event("UIN available")
@@ -421,13 +421,13 @@ class NPNT(object):
                 
         if str(self.state) is str(PANotUploadedState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'PA Not Uploaded'
+            self.__npntNotAllowedReason = 'PA Not Uploaded'.encode()
             
             logging.info("NPNT, PA Not Uploaded")
                 
         if str(self.state) is str(PANotParsedState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'PA Not Parsed'
+            self.__npntNotAllowedReason = 'PA Not Parsed'.encode()
             
             if self.parse_permission_artefact():
                 self.state = self.state.on_event("PA Parsed")
@@ -437,7 +437,7 @@ class NPNT(object):
                 
         if str(self.state) is str(UINNotCorrectState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'UIN Not Correct'
+            self.__npntNotAllowedReason = 'UIN Not Correct'.encode()
             
             if self.uin == self.pauin:
                 self.state = self.state.on_event("UIN Matched")
@@ -447,7 +447,7 @@ class NPNT(object):
                 
         if str(self.state) is str(PANotAuthenticState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'PA not Authentic'
+            self.__npntNotAllowedReason = 'PA not Authentic'.encode()
             
             if self.verify_xml_signature():
                 self.state = self.state.on_event("PA Signature Verified")
@@ -464,7 +464,7 @@ class NPNT(object):
         
         if str(self.state) is str(OutsideTimelimitState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'Outside Time Limit'
+            self.__npntNotAllowedReason = 'Outside Time Limit'.encode()
             
             if lat > -190 and lon > -190 and hdop < 2:
                 if self.within_time(globalTime):
@@ -473,12 +473,12 @@ class NPNT(object):
                 else:
                     logging.info("NPNT, Outside Time Limit")    
             else:
-                self.__npntNotAllowedReason = b'No GPS Lock'
+                self.__npntNotAllowedReason = 'No GPS Lock'.encode()
                 logging.info("NPNT, No GPS Lock")
                 
         if str(self.state) is str(OutsideGeofenceState()):
             self.__npntAllowed = False
-            self.__npntNotAllowedReason = b'Outside GeoFence'
+            self.__npntNotAllowedReason = 'Outside GeoFence'.encode()
             
             if lat > -190 and lon > -190 and hdop < 2:
                 if self.fence.check_point((lat,lon)):
@@ -487,12 +487,12 @@ class NPNT(object):
                 else:
                     logging.info("NPNT, Outside GeoFence")    
             else:
-                self.__npntNotAllowedReason = b'No GPS Lock'
+                self.__npntNotAllowedReason = 'No GPS Lock'.encode()
                 logging.info("NPNT, No GPS Lock")
                 
         if str(self.state) is str(ArmAllowedState()):
             self.__npntAllowed = True
-            self.__npntNotAllowedReason = b'Go go go'
+            self.__npntNotAllowedReason = 'Go go go'.encode()
             
             if isArmed:
                 self.state = self.state.on_event("Armed")

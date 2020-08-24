@@ -70,13 +70,13 @@ class CompanionComputer(object):
 
         # Comm loss
         self.commLoss = False
-        self.commLossEnabled = True
+        self.commLossEnabled = False
         self.commLossPersistance = 5 #s
         self.gcsLastHearbeatTime = time.time()
 
         # Breach RTL engage handling
         self.breached = False
-        self.breachedRTLEnabled = True
+        self.breachedRTLEnabled = False
         self.commRange = 500 # m
         self.lastTakeOffLocation = (-200, -200) # (lat, lon)
         self.takeOffLocationStored = False
@@ -297,6 +297,8 @@ class CompanionComputer(object):
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            6)) # RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_statustext_message(mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+                                                                                             "FAILSAFE: Comm Loss".encode()))
             self.commLoss = True
         else:
             self.commLoss = False
@@ -326,6 +328,9 @@ class CompanionComputer(object):
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            6)) # RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_statustext_message(mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+                                                                                             "FAILSAFE: GeoFence Breach".encode()))
+            
             self.breached = True
         else:
             self.breached = False

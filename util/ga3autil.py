@@ -401,6 +401,22 @@ class GA3ACompanionComputer(CompanionComputer):
                             self.RTLLon = int(data[6])*1e-7
                             self.RTLWP = int(data[7])
                     return
+                
+    def check_payload_failsafe(self):
+        if not self.agriPayload.payloadRTLEnabled:
+            return
+        
+        if self.agriPayload.payloadRTLEngage:
+            logging.info("MSG, Engaging RTL Due to Payload Over")
+
+            # Engage RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                           6)) # RTL
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_statustext_message(mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+                                                                                             "FAILSAFE: Payload Over".encode()))
+        else:
+            self.agriPayload.payloadRTLEngage = False
 
     def update(self):
         # Rewrite mission file in case of mission is over
