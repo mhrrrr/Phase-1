@@ -37,10 +37,10 @@ class AgriPayload:
         # Nozzle parameters
         self.nozzMaxPWM = 2000
         self.nozzMinPWM = 1000
-        self.nozzMinPS = 85                 # Particle Size in micrometer
+        self.targetPS = 120                 # Particle Size in micrometer
         self.nozzPWM = 0                    # Current PWM of Nozzle
         self.nozzNum = 4                    # number of nozzles
-        self.nozzMaxFlowRate = 0.3          # in ltr/min
+        self.nozzMaxFlowRate = 0.7          # in ltr/min
         self.nozzMinFlowRate = 0.1          # in ltr/min
         self.nozzType = 'Micromiser'
         self.nozzP = 0.01
@@ -137,11 +137,13 @@ class AgriPayload:
             
         else:
             if testing:
-                self.nozzPWM = 1999
-                #self.pumpPWM = 1400
+                # self.nozzPWM = 1999
+                # self.pumpPWM = 1400
                 self.reqFlowRate = 1.2
+                self.targetPS = 60
                     
                 self.calc_pump_pwm(actualFlowRate)
+                self.calc_nozz_pwm(actualRPM)
             else:
                 self.nozzPWM = self.nozzMinPWM
                 self.pumpPWM = self.pumpAbsMinPWM
@@ -205,33 +207,49 @@ class AgriPayload:
     def calc_nozz_pwm(self, actualRPM):
         
         if self.nozzType == 'Micromiser':
-            self.nozzPWM = int(self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate))
-##            # handle garbage value
-##            if actualRPM < 0:
-##                actualRPM = 0
-##            if actualRPM > 20000:
-##                actualRPM = 20000
-##            
-##            # Calculate Target RPM
-##            nozzFlow = self.reqFlowRate/self.nozzNum
-##            if nozzFlow < self.nozzMinFlowRate:
-##                nozzFlow = self.nozzMinFlowRate
-##            if nozzFlow > self.nozzMaxFlowRate:
-##                nozzFlow = self.nozzMaxFlowRate
-##            
-##            # curve fit equation RPM = A * (PS - C) ^ B from Micromiser 10 Datasheet
-##            equationCoeefsA = 89248 + (nozzFlow - 0.3) / (0.1 - 0.3) * (180412 - 89248)
-##            equationCoeefsB = -0.732 + (nozzFlow - 0.3) / (0.1 - 0.3) * (-0.858 + 0.732)
-##            equationCoeefsC = 80 + (nozzFlow - 0.3) / (0.1 - 0.3) * (42 - 80)
-##            
-##            if (self.nozzMinPS - equationCoeefsC) > 1:
-##                nozzTargetRPM = equationCoeefsA * (self.nozzMinPS - equationCoeefsC)**equationCoeefsB
-##            else:
-##                nozzTargetRPM = 0
-##                
-##            # P control for maintaing target PWM
-##            self.nozzPWM = int(self.nozzPWM + self.nozzP * (nozzTargetRPM - actualRPM))
-##            
+            # self.nozzPWM = int(self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate))
+            
+            # Calculate Target RPM
+            nozzFlow = self.reqFlowRate/self.nozzNum
+            if nozzFlow < self.nozzMinFlowRate:
+                nozzFlow = self.nozzMinFlowRate
+            if nozzFlow > self.nozzMaxFlowRate:
+                nozzFlow = self.nozzMaxFlowRate
+            
+            # curve fit equation RPM = A * (PS - C) ^ B from Micromiser 10 Datasheet
+            equationCoeefsA = 257965*np.exp(nozzFlow * -3.519)
+            equationCoeefsB = -0.732 + (nozzFlow - 0.3) / (0.1 - 0.3) * (-0.858 + 0.732)
+            equationCoeefsC = 80 + (nozzFlow - 0.3) / (0.1 - 0.3) * (42 - 80)
+            
+            if (self.targetPS - equationCoeefsC) > 1:
+                nozzTargetRPM = equationCoeefsA * (self.targetPS - equationCoeefsC)**equationCoeefsB
+            else:
+                nozzTargetRPM = 0
+            
+            # rpm = m*voltage + c
+            m = -373.91 * nozzFlow + 599.77
+            c = -197.78 * nozzFlow - 129.68
+            
+            voltage = (nozzTargetRPM-c)/m
+            
+            if voltage < 6:
+                voltage = 6
+            if voltage > 24:
+                voltage = 24
+            
+            logging.info("Nozz PID, %f, %f"%(nozzTargetRPM, voltage))
+            
+            self.nozzPWM = int(1000 + voltage/24*1000)
+                
+            # # handle garbage value
+            # if actualRPM < 0:
+            #     actualRPM = 0
+            # if actualRPM > 20000:
+            #     actualRPM = 20000
+                
+            # # P control for maintaing target PWM
+            # self.nozzPWM = int(self.nozzPWM + self.nozzP * (nozzTargetRPM - actualRPM))
+
             if self.nozzPWM > self.nozzMaxPWM:
                 self.nozzPWM = self.nozzMaxPWM
             if self.nozzPWM < self.nozzMinPWM:
