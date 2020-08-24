@@ -221,10 +221,25 @@ class AgriPayload:
             equationCoeefsB = -0.732 + (nozzFlow - 0.3) / (0.1 - 0.3) * (-0.858 + 0.732)
             equationCoeefsC = 80 + (nozzFlow - 0.3) / (0.1 - 0.3) * (42 - 80)
             
+            # assuming Power = A * RPM^2 + C
+            # and A = a1 * (flow^2) + b1 * flow + c1
+            # C = a2 * (flow^2) + b2 * flow + c2
+            A = 2.779850e-07*nozzFlow**2 + 7.171870e-08*nozzFlow + 1.936642e-08
+            C = 1.10688083*nozzFlow**2 + 0.04140868*nozzFlow + 0.19592032
+            
+            maxPossibleRPM = np.sqrt(10/A-C)-500
+            
+            # Whether Target Particle Size can be achieved or not.
+            # If not possible only go for max possible RPM
             if (self.targetPS - equationCoeefsC) > 1:
                 nozzTargetRPM = equationCoeefsA * (self.targetPS - equationCoeefsC)**equationCoeefsB
             else:
-                nozzTargetRPM = 0
+                nozzTargetRPM = maxPossibleRPM
+            
+            # If Target Nozzle RPM is more than max possible RPM
+            # Then limit the target RPM to max possible RPM
+            if nozzTargetRPM > maxPossibleRPM:
+                nozzTargetRPM = maxPossibleRPM
             
             # rpm = m*voltage + c
             m = -373.91 * nozzFlow + 599.77
