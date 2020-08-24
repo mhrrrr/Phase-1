@@ -8,10 +8,9 @@
 # Description:    pymavlink
 ### END INIT INFO
 
-sleep 10
 sudo pigpiod
-export MAVLINK20="0"
-cd /home/pi/Desktop/pymavlink_log
+export MAVLINK20="1"
+cd /home/pi/Desktop/GACompanionComp/log/
 
 name_log=log
 if [[ -e $name_log ]] ; then
@@ -30,10 +29,6 @@ if [[ -e $name_err ]] ; then
     name_err=$name_err-$i
 fi
 
-#cp test_log last_test_log
-#cp test_err last_test_err
-#/usr/local/bin/mavproxy.py --master=/dev/serial0 --baudrate 921600 --out 192.168.168.200:14550 --daemon > test_log 2>test_err &
-#/usr/bin/python /home/pi/Desktop/pymavlink_main.py --vehicle GA3A > test_log 2>test_err &
-/usr/bin/python /home/pi/Desktop/pymavlink_main.py --vehicle GA3A > "$name_log" 2>"$name_err" &
+/home/pi/Desktop/companionComp/bin/python3 /home/pi/Desktop/GACompanionComp/pymavlink_main.py --vehicle GA3A > "$name_log" 2>"$name_err" &
 
 exit 0
