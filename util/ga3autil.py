@@ -133,6 +133,9 @@ class GA3ACompanionComputer(CompanionComputer):
                     if paramId == "MAX_FLOW_RATE":
                         if paramValue > 0.3 and paramValue < 5:
                             self.agriPayload.maxFlowRate = paramValue
+                    if paramId == "DROPLET_SIZE":
+                        if paramValue > 49 and paramValue < 251:
+                            self.agriPayload.targetPS = paramValue
 
                 if recievedMsg.get_type() == "PARAM_REQUEST_READ":
                     paramId = recievedMsg.param_id
@@ -145,32 +148,38 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
                                                                                                           self.agriPayload.remainingPayload,
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                          5,
+                                                                                                          6,
                                                                                                           1))
                     if paramId == "CLEARANCE_ALT":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
                                                                                                           int(self.clearanceAlt*100),
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                          5,
+                                                                                                          6,
                                                                                                           2))
                     if paramId == "PESTI_PER_ACRE":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PESTI_PER_ACRE".encode(),
                                                                                                           self.agriPayload.pesticidePerAcre,
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                          5,
+                                                                                                          6,
                                                                                                           3))
                     if paramId == "SWATH":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("SWATH".encode(),
                                                                                                           self.agriPayload.swath,
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                          5,
+                                                                                                          6,
                                                                                                           4))
                     if paramId == "MAX_FLOW_RATE":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("MAX_FLOW_RATE".encode(),
                                                                                                           self.agriPayload.maxFlowRate,
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                          5,
+                                                                                                          6,
                                                                                                           5))
+                    if paramId == "DROPLET_SIZE":
+                        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("DROPLET_SIZE".encode(),
+                                                                                                          self.agriPayload.targetPS,
+                                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                          6,
+                                                                                                          6))
 
                 if recievedMsg.get_type() == "GA3A_MISSION_CMD":
                     if recievedMsg.start_wp > 0 and recievedMsg.end_wp > recievedMsg.start_wp:

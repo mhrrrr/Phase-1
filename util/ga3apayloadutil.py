@@ -32,14 +32,14 @@ class AgriPayload:
         self.pumpMaxPWM = 2000
         self.pumpMinPWM = 1200
         self.pumpAbsMinPWM = 1000
-        self.pumpMaxFlowRate = 1.4                  # in ltr/min
+        self.pumpMaxFlowRate = 2.8                  # in ltr/min
         self.pumpMinFlowRate = 0                    # in ltr/min
         self.pumpPWM = 0
         
         # Nozzle parameters
         self.nozzMaxPWM = 2000
         self.nozzMinPWM = 1000
-        self.targetPS = 100                 # Particle Size in micrometer
+        self.targetPS = 120                 # Particle Size in micrometer
         self.nozzPWM = 0                    # Current PWM of Nozzle
         self.nozzNum = 4                    # number of nozzles
         self.nozzMaxFlowRate = 0.7          # in ltr/min
@@ -139,8 +139,7 @@ class AgriPayload:
             if testing:
                 # self.nozzPWM = 1999
                 # self.pumpPWM = 1400
-                self.reqFlowRate = 1.2
-                self.targetPS = 100
+                self.reqFlowRate = self.maxFlowRate
                     
                 self.calc_pump_pwm(actualFlowRate)
                 self.calc_nozz_pwm(actualRPM)
