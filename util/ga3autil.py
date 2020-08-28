@@ -465,10 +465,10 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                   self.agriPayload.remainingPayload,
                                                                                                   int(resumeButtonEnable)))
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
-                                                                                                  self.agriPayload.remainingPayload,
-                                                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
-                                                                                                  6,
-                                                                                                  1))
+                                                                                          self.agriPayload.remainingPayload,
+                                                                                          mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                          6,
+                                                                                          1))
 
         # Update Mode
         self.previousMode = self.currentMode
