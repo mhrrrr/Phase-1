@@ -280,7 +280,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
             # Align heading to mission heading
             if self.resumeState == 4:
-                if abs(self.yaw-self.missionYaw) < 5:
+                if abs(np.math.degrees(self.yaw)-self.missionYaw) < 5:
                     self.resumeSendingCounter = 0
                     self.resumeState = 5
                 else:
@@ -377,7 +377,7 @@ class GA3ACompanionComputer(CompanionComputer):
                 else:
                     if self.resumeSendingCounter < sendCount:
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
-                                                                                                       self.mavlinkInterface.mavConnection.target_component,
+                                                                                                       mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                                        3) # AUTO
                                                               )
                         self.resumeSendingCounter = self.resumeSendingCounter + 1
@@ -429,7 +429,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
     def update(self):
         # Rewrite mission file in case of mission is over
-        if self.currentWP > self.endWP and (self.RTLWP>0):
+        if self.currentWP >= self.endWP and (self.RTLWP>0):
             if self.missionOn:
                 self.RTLLat = -200
                 self.RTLLon = -200
@@ -438,7 +438,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
 
         # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
-        if self.previousMode == 'RTL' and self.currentMode == 'AUTO':
+        if self.previousMode == 'AUTO' and self.currentMode == 'RTL':
             self.RTLLat = self.lat
             self.RTLLon = self.lon
             self.RTLWP = self.currentWP
@@ -465,6 +465,11 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                   0,
                                                                                                   self.agriPayload.remainingPayload,
                                                                                                   int(resumeButtonEnable)))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
+                                                                                                  self.agriPayload.remainingPayload,
+                                                                                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+                                                                                                  6,
+                                                                                                  1))
 
         # Update Mode
         self.previousMode = self.currentMode
