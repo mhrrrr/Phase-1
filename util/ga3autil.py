@@ -118,7 +118,6 @@ class GA3ACompanionComputer(CompanionComputer):
                         pass
                     paramValue = recievedMsg.param_value
                     if paramId == "PAYLOAD":
-                        print("Payload param received",paramValue)
                         if paramValue > 0 and paramValue < 17:
                             self.agriPayload.remainingPayload = paramValue
                     if paramId == "CLEARANCE_ALT":
