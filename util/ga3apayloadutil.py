@@ -33,7 +33,7 @@ class AgriPayload:
         self.pumpMinPWM = 1200
         self.pumpAbsMinPWM = 1000
         self.pumpMaxFlowRate = 2.8                  # in ltr/min
-        self.pumpMinFlowRate = 0                    # in ltr/min
+        self.pumpMinFlowRate = 0.4                    # in ltr/min
         self.pumpPWM = 0
         
         # Nozzle parameters
