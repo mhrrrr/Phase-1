@@ -26,7 +26,7 @@ class AgriPayload:
         self.reqFlowRate = 0.                        # in ltr/min
         self.shouldSpraying = False
         self.payloadRTLEngage = False
-        self.payloadRTLEnabled = False
+        self.payloadRTLEnabled = True
         
         # pump parameters
         self.pumpMaxPWM = 2000

@@ -428,7 +428,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
     def update(self):
         # Rewrite mission file in case of mission is over
-        if self.currentWP >= self.endWP and (self.RTLWP>0):
+        if self.currentWP > self.endWP and (self.RTLWP>0):
             if self.missionOn:
                 self.RTLLat = -200
                 self.RTLLon = -200
@@ -458,6 +458,9 @@ class GA3ACompanionComputer(CompanionComputer):
         resumeButtonEnable = False
         if not self.isFlying and self.missionOn and self.RTLWP>self.startWP and self.RTLWP<=self.endWP:
             resumeButtonEnable = True
+			
+		# Check for payload failsafe
+		self.check_payload_failsafe()
 
         # Payload Status send to GCS
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
