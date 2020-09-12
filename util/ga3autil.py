@@ -118,6 +118,7 @@ class GA3ACompanionComputer(CompanionComputer):
                         pass
                     paramValue = recievedMsg.param_value
                     if paramId == "PAYLOAD":
+                        logging.warn("PAYLOAD, %f"%(paramValue))
                         if paramValue > 0 and paramValue < 17:
                             self.agriPayload.remainingPayload = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
@@ -126,6 +127,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               1))
                     if paramId == "CLEARANCE_ALT":
+                        logging.warn("CLEARANCE_ALT, %f"%(paramValue))
                         if paramValue > 200 and paramValue < 4000:
                             self.clearanceAlt = paramValue/100.
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
@@ -134,6 +136,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               2))
                     if paramId == "PESTI_PER_ACRE":
+                        logging.warn("PESTI_PER_ACRE, %f"%(paramValue))
                         if paramValue > 1 and paramValue < 20:
                             self.agriPayload.pesticidePerAcre = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PESTI_PER_ACRE".encode(),
@@ -142,6 +145,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               3))
                     if paramId == "SWATH":
+                        logging.warn("SWATH, %f"%(paramValue))
                         if paramValue > 1 and paramValue < 8:
                             self.agriPayload.swath = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("SWATH".encode(),
@@ -150,6 +154,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               4))
                     if paramId == "MAX_FLOW_RATE":
+                        logging.warn("MAX_FLOW_RATE, %f"%(paramValue))
                         if paramValue > 0.3 and paramValue < 5:
                             self.agriPayload.maxFlowRate = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("MAX_FLOW_RATE".encode(),
@@ -158,6 +163,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               5))
                     if paramId == "DROPLET_SIZE":
+                        logging.warn("DROPLET_SIZE, %f"%(paramValue))
                         if paramValue > 49 and paramValue < 251:
                             self.agriPayload.targetPS = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("DROPLET_SIZE".encode(),
