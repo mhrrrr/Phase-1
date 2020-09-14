@@ -14,6 +14,7 @@ from util.ga3apayloadutil import AgriPayload, PIBStatus, FlowSensor
 import numpy as np
 import sys
 import threading
+import os
 
 class GA3ACompanionComputer(CompanionComputer):
     def __init__(self, sitlType):
@@ -50,6 +51,17 @@ class GA3ACompanionComputer(CompanionComputer):
 
         # Read Agri Mission File
         self.read_mission_file()
+        
+        # Define Parameter Dictionary
+#        self.paramDict = {"PAYLOAD":        [1, self.agriPayload.remainingPayload, 0, 17],
+#                          "CLEARANCE_ALT":  [2, self.agriPayload.remainingPayload, 0, 17],
+#                          "PESTI_PER_ACRE": [3, self.agriPayload.remainingPayload, 0, 17],
+#                          "SWATH":          [4, self.agriPayload.remainingPayload, 0, 17],
+#                          "MAX_FLOW_RATE":  [5, self.agriPayload.remainingPayload, 0, 17],
+#                          "DROPLET_SIZE":   [6, self.agriPayload.remainingPayload, 49, 251],}
+        
+        # Read parameter file
+        self.load_params_from_file()
 
     def init(self):
         super().init()
@@ -165,6 +177,8 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
                                                                                                               6,
                                                                                                               6))
+                    
+                    self.save_params_to_file()
 
                 if recievedMsg.get_type() == "PARAM_REQUEST_READ":
                     paramId = recievedMsg.param_id
@@ -231,7 +245,38 @@ class GA3ACompanionComputer(CompanionComputer):
                 super().handle_recieved_message(recievedMsg)
             else:
                 time.sleep(0.01)
-
+                
+    def load_params_from_file(self):
+        if not os.path.isfile('agri_param'):
+            self.save_params_to_file()
+        
+        with open('agri_param', 'r') as f:
+            for line in f:
+                if len(line) > 0:
+                    splittedLine = line.split(",")
+                    if len(splittedLine) == 2:
+                        if splittedLine[0].strip() == "PAYLOAD":
+                            self.agriPayload.remainingPayload = float(splittedLine[1])
+                        if splittedLine[0].strip() == "CLEARANCE_ALT":
+                            self.clearanceAlt = float(splittedLine[1])
+                        if splittedLine[0].strip() == "PESTI_PER_ACRE":
+                            self.agriPayload.pesticidePerAcre = float(splittedLine[1])
+                        if splittedLine[0].strip() == "SWATH":
+                            self.agriPayload.swath = float(splittedLine[1])
+                        if splittedLine[0].strip() == "MAX_FLOW_RATE":
+                            self.agriPayload.maxFlowRate = float(splittedLine[1])
+                        if splittedLine[0].strip() == "DROPLET_SIZE":
+                            self.agriPayload.targetPS = float(splittedLine[1])
+    
+    def save_params_to_file(self):
+        with open('agri_param', 'w') as f:
+            f.write("PAYLOAD," + str(self.agriPayload.remainingPayload) + "\n")
+            f.write("CLEARANCE_ALT," + str(self.clearanceAlt) + "\n")
+            f.write("PESTI_PER_ACRE," + str(self.agriPayload.pesticidePerAcre) + "\n")
+            f.write("SWATH," + str(self.agriPayload.swath) + "\n")
+            f.write("MAX_FLOW_RATE," + str(self.agriPayload.maxFlowRate) + "\n")
+            f.write("DROPLET_SIZE," + str(self.agriPayload.targetPS) + "\n")
+            
     def resume_mission(self):
         sendCount = 10
         logging.info("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
