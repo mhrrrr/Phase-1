@@ -489,7 +489,7 @@ class GA3ACompanionComputer(CompanionComputer):
         if not self.agriPayload.payloadRTLEnabled:
             return
         
-        if self.agriPayload.payloadRTLEngage:
+        if self.agriPayload.payloadRTLEngage and self.currentMode != "RTL":
             logging.info("MSG, Engaging RTL Due to Payload Over")
 
             # Engage RTL
