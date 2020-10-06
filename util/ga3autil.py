@@ -236,6 +236,19 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.RTLLon = -200
                         self.RTLWP = 0
                         self.write_mission_file()
+                    
+                    # This message will be recieved and mission is cleared
+                    if recievedMsg.start_wp == -1 and recievedMsg.end_wp == -1:
+                        self.startWP = recievedMsg.start_wp
+                        self.endWP = recievedMsg.end_wp
+                        if recievedMsg.mission_alt > 100:
+                            self.missionAlt = recievedMsg.mission_alt/100.
+                        self.missionYaw = recievedMsg.mission_yaw
+                        self.missionOn = False
+                        self.RTLLat = -200
+                        self.RTLLon = -200
+                        self.RTLWP = 0
+                        self.write_mission_file()
 
                 if recievedMsg.get_type() == "GA3A_RESUME_CMD":
                     if recievedMsg.do_resume == 1 and not self.isFlying and not self.resumeOn:
