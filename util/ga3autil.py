@@ -130,7 +130,7 @@ class GA3ACompanionComputer(CompanionComputer):
                         pass
                     paramValue = recievedMsg.param_value
                     if paramId == "PAYLOAD":
-                        if paramValue > 0 and paramValue < 17:
+                        if paramValue >= 0 and paramValue <= 17:
                             self.agriPayload.remainingPayload = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PAYLOAD".encode(),
                                                                                                               self.agriPayload.remainingPayload,
@@ -138,15 +138,15 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               1))
                     if paramId == "CLEARANCE_ALT":
-                        if paramValue > 200 and paramValue < 4000:
-                            self.clearanceAlt = paramValue/100.
+                        if paramValue >= 2 and paramValue <= 40:
+                            self.clearanceAlt = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
-                                                                                                              int(self.clearanceAlt*100),
+                                                                                                              self.clearanceAlt,
                                                                                                               mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
                                                                                                               6,
                                                                                                               2))
                     if paramId == "PESTI_PER_ACRE":
-                        if paramValue > 1 and paramValue < 20:
+                        if paramValue >= 1 and paramValue <= 20:
                             self.agriPayload.pesticidePerAcre = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("PESTI_PER_ACRE".encode(),
                                                                                                               self.agriPayload.pesticidePerAcre,
@@ -154,7 +154,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               3))
                     if paramId == "SWATH":
-                        if paramValue > 1 and paramValue < 8:
+                        if paramValue >= 1 and paramValue <= 8:
                             self.agriPayload.swath = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("SWATH".encode(),
                                                                                                               self.agriPayload.swath,
@@ -162,7 +162,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               4))
                     if paramId == "MAX_FLOW_RATE":
-                        if paramValue > 0.3 and paramValue < 5:
+                        if paramValue >= 0.3 and paramValue <= 5:
                             self.agriPayload.maxFlowRate = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("MAX_FLOW_RATE".encode(),
                                                                                                               self.agriPayload.maxFlowRate,
@@ -170,7 +170,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                               6,
                                                                                                               5))
                     if paramId == "DROPLET_SIZE":
-                        if paramValue > 49 and paramValue < 251:
+                        if paramValue >= 50 and paramValue <= 250:
                             self.agriPayload.targetPS = paramValue
                             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("DROPLET_SIZE".encode(),
                                                                                                               self.agriPayload.targetPS,
@@ -195,7 +195,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                           1))
                     if paramId == "CLEARANCE_ALT":
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_param_value_message("CLEARANCE_ALT".encode(),
-                                                                                                          int(self.clearanceAlt*100),
+                                                                                                          self.clearanceAlt,
                                                                                                           mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
                                                                                                           6,
                                                                                                           2))
