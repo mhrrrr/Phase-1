@@ -521,7 +521,7 @@ class GA3ACompanionComputer(CompanionComputer):
         # Resume Mission Handling
         self.resume_mission()
 
-        if self.resumeOn and self.currentMode != 'GUIDED' and self.resumeState > 1:
+        if (self.resumeOn and self.currentMode != 'GUIDED' and self.resumeState > 1) or not self.isArmed:
             self.resumeSendingCounter = 0
             self.resumeOn = False
             self.resumeState = 0
