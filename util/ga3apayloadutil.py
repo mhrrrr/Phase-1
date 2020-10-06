@@ -22,7 +22,7 @@ class AgriPayload:
         self.maxFlowRate = 1.2      # Litre/Minute
         
         # Status
-        self.remainingPayload = 10                   # in liters
+        self.remainingPayload = 8                   # in liters
         self.reqFlowRate = 0.                        # in ltr/min
         self.shouldSpraying = False
         self.payloadRTLEngage = False
