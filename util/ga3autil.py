@@ -318,7 +318,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
             # TakeOff
             if self.resumeState == 2:
-                if self.relativeAlt > 2:
+                if self.terrainAlt > 1.5:
                     self.resumeSendingCounter = 0
                     self.resumeState = 3
                 else:
@@ -549,6 +549,9 @@ class GA3ACompanionComputer(CompanionComputer):
         
         # Check for payload failsafe
         self.check_payload_failsafe()
+        
+        # Update the Vehicle max speed
+        self.update_vehicle_max_speed()
 
         # Payload Status send to GCS
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_ga3a_payload_status_message(0,
