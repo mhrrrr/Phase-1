@@ -389,7 +389,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
             # Guide to Top of the RTL point
             if self.resumeState == 5:
-                if dist_between_lat_lon(self.RTLLat, self.RTLLon, self.lat, self.lon) < 1:
+                if dist_between_lat_lon(self.RTLLat, self.RTLLon, self.lat, self.lon) < 2.5:
                     self.resumeSendingCounter = 0
                     self.resumeState = 6
                 else:
