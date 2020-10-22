@@ -116,7 +116,7 @@ class AgriPayload:
             self.maxSpeedSetPoint = self.maxFlowRate/60./self.swath/sprayDensity + 0.15
             
             # Payload Over RTL
-            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1800 and self.remainingPayload < 2:
+            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1800:
                 if (time.time() - self.payloadOverStartTime) > 2:
                     self.payloadRTLEngage = True
             else:
