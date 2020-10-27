@@ -59,7 +59,9 @@ class CompanionComputer(object):
         self.yaw = 0 # rad (0 to 2pi)
 
         # NPNT
-        self.npnt = NPNT(sitlType)
+        self.npntEnable = False
+        if self.npntEnable:
+            self.npnt = NPNT(sitlType)
 
         # FTP
         self.ftp = FTP()
@@ -90,7 +92,8 @@ class CompanionComputer(object):
         self.scheduledTaskList.append(ScheduleTask(1, self.send_heartbeat))
 
         # Update NPNT related Variables
-        self.scheduledTaskList.append(ScheduleTask(1, self.update_npnt))
+        if self.npntEnable:
+            self.scheduledTaskList.append(ScheduleTask(1, self.update_npnt))
 
         # Check for Comm Loss
         self.scheduledTaskList.append(ScheduleTask(1, self.check_comm_loss))
@@ -165,37 +168,37 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "RANGEFINDER":
             self.terrainAlt = recievedMsg.distance
             return
-
-        if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
-            self.npnt.uinChangeRequested = ''.join(map(chr,recievedMsg.uin[0:recievedMsg.size]))
-            return
-
-        if recievedMsg.get_type() == "NPNT_KEY_ROTATION":
-            self.npnt.keyRotationRequested = True
-            return
-
-        if recievedMsg.get_type() == "NPNT_REQ_LOGS":
-            self.npnt.logDownloadRequest = True
-            self.npnt.logDownloadDateTime = ''.join(map(chr,recievedMsg.date_time[0:15]))
-            return
-
-        if recievedMsg.get_type() == "NPNT_RFM_DETAIL":
-            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_rfm_detail_message(0,
-                                                                                                  0,
-                                                                                                  self.npnt.firmwareVersion.encode(),
-                                                                                                  len(self.npnt.firmwareVersion),
-                                                                                                  self.npnt.firmwareHash.encode(),
-                                                                                                  len(self.npnt.firmwareHash),
-                                                                                                  self.npnt.rpasId.encode(),
-                                                                                                  len(self.npnt.rpasId),
-                                                                                                  self.npnt.rpasModelId.encode(),
-                                                                                                  len(self.npnt.rpasModelId),
-                                                                                                  self.npnt.uin.encode(),
-                                                                                                  len(self.npnt.uin)))
-            return
-
-        if recievedMsg.get_type() == "NPNT_GEOFENCE":
-            self.npnt.fenceSentToGCS = True
+        if self.npntEnable:        
+            if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
+                self.npnt.uinChangeRequested = ''.join(map(chr,recievedMsg.uin[0:recievedMsg.size]))
+                return
+    
+            if recievedMsg.get_type() == "NPNT_KEY_ROTATION":
+                self.npnt.keyRotationRequested = True
+                return
+    
+            if recievedMsg.get_type() == "NPNT_REQ_LOGS":
+                self.npnt.logDownloadRequest = True
+                self.npnt.logDownloadDateTime = ''.join(map(chr,recievedMsg.date_time[0:15]))
+                return
+    
+            if recievedMsg.get_type() == "NPNT_RFM_DETAIL":
+                self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_npnt_rfm_detail_message(0,
+                                                                                                      0,
+                                                                                                      self.npnt.firmwareVersion.encode(),
+                                                                                                      len(self.npnt.firmwareVersion),
+                                                                                                      self.npnt.firmwareHash.encode(),
+                                                                                                      len(self.npnt.firmwareHash),
+                                                                                                      self.npnt.rpasId.encode(),
+                                                                                                      len(self.npnt.rpasId),
+                                                                                                      self.npnt.rpasModelId.encode(),
+                                                                                                      len(self.npnt.rpasModelId),
+                                                                                                      self.npnt.uin.encode(),
+                                                                                                      len(self.npnt.uin)))
+                return
+    
+            if recievedMsg.get_type() == "NPNT_GEOFENCE":
+                self.npnt.fenceSentToGCS = True
 
         if recievedMsg.get_type() == "FILE_TRANSFER_PROTOCOL":
             replyPayload = self.ftp.handle_ftp_message(recievedMsg.payload)
@@ -362,7 +365,8 @@ class CompanionComputer(object):
     def kill_all_threads(self):
         logging.info("CompanionComputer killing all threads")
         self.mavlinkInterface.kill_all_threads()
-        self.npnt.kill_all_threads()
+        if self.npntEnable:
+            self.npnt.kill_all_threads()
         self.killAllThread.set()
 
         for task in self.scheduledTaskList:
