@@ -216,6 +216,7 @@ class CompanionComputer(object):
         if self.rc6 is not None:
             if self.rc6 > 1800:
                 self.mavlinkInterface.sendingBlocked = True
+                logging.warn("Blocking Message sending")
             else:
                 self.mavlinkInterface.sendingBlocked = False
 
@@ -739,3 +740,24 @@ def dist_between_lat_lon(lat1, lon1, lat2, lon2):
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
     return R * c
+
+class CountDown(object):
+    def __init__(self, interval):
+        self.started = False
+        self.finished = False
+        self.interval = interval
+        
+    def start(self):
+        if not self.started:
+            self.started = True
+            self.finished = False
+            self._timer = Timer(self.interval, self.time_complete)
+            self._timer.start()
+            
+    def time_complete(self):
+        self.finished = True
+        
+    def reset(self):
+        self._timer.cancel()
+        self.started = False
+        self.finished = False

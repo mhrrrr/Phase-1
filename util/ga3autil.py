@@ -8,7 +8,7 @@ Created on Wed Mar 06 16:02:00 2019
 # import necessary modules
 # import necessary modules
 import time
-from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask, State
+from util.gacommonutil import CompanionComputer, mavutil, path, dist_between_lat_lon, ScheduleTask, State, CountDown
 import logging
 from util.ga3apayloadutil import AgriPayload, PIBStatus, FlowSensor
 import numpy as np
@@ -40,6 +40,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.resumeOn = False
         self.resumeState = 0
         self.resumeSendingCounter = 0
+        self.holdBeforeStartingAutoCountDown = CountDown(5)
 
         # Payload Related
         self.agriPayload = AgriPayload(self.isSITL)
@@ -116,9 +117,10 @@ class GA3ACompanionComputer(CompanionComputer):
                         self.agriPayload.payloadTesting = 2
                     elif recievedMsg.chan7_raw < 1700 and recievedMsg.chan7_raw > 1300:
                         self.agriPayload.payloadTesting = 1
+                        self.agriPayload.dripStopCountDown.reset()
                     else:
                         if self.agriPayload.payloadTesting != 0:
-                            self.agriPayload.dripStopTrigger = True
+                            self.agriPayload.dripStopCountDown.start()
                         self.agriPayload.payloadTesting = 0
 
                 if recievedMsg.get_type() == "PARAM_SET":
@@ -446,12 +448,27 @@ class GA3ACompanionComputer(CompanionComputer):
                                                               )
                         self.resumeSendingCounter = self.resumeSendingCounter + 1
                     return
-
-            # Set Current Waypoint
+                
+            # Wait for 5 s and start pump and nozzle before starting mission
             if self.resumeState == 7:
-                if self.currentWP == self.RTLWP:
+                if self.holdBeforeStartingAutoCountDown.started and self.holdBeforeStartingAutoCountDown.finished:
                     self.resumeSendingCounter = 0
                     self.resumeState = 8
+                    
+                    self.holdBeforeStartingAutoCountDown.reset()
+                    
+                    self.agriPayload.resumeRequestedSpray = False
+                else:
+                    if not self.holdBeforeStartingAutoCountDown.started:
+                        self.holdBeforeStartingAutoCountDown.start()
+                    self.agriPayload.resumeRequestedSpray = True
+                    return
+
+            # Set Current Waypoint
+            if self.resumeState == 8:
+                if self.currentWP == self.RTLWP:
+                    self.resumeSendingCounter = 0
+                    self.resumeState = 9
                 else:
                     if self.resumeSendingCounter < sendCount:
                         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_mission_set_current_message(self.mavlinkInterface.mavConnection.target_system,
@@ -462,7 +479,7 @@ class GA3ACompanionComputer(CompanionComputer):
                     return
 
             # Engage AUTO mission
-            if self.resumeState == 8:
+            if self.resumeState == 9:
                 if self.currentMode == "AUTO":
                     self.resumeSendingCounter = 0
                     self.resumeOn = False
