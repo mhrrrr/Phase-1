@@ -46,9 +46,6 @@ class GA3ACompanionComputer(CompanionComputer):
         self.maxSpeed = 5 # m/s
         self.maxSpeedCount = 0
 
-        # Agri Specific vehicle status
-        self.testing = False
-
         # Read Agri Mission File
         self.read_mission_file()
         
@@ -115,10 +112,14 @@ class GA3ACompanionComputer(CompanionComputer):
 
             if recievedMsg is not None:
                 if recievedMsg.get_type() == "RC_CHANNELS":
-                    if recievedMsg.chan7_raw > 1800:
-                        self.testing = True
+                    if recievedMsg.chan7_raw > 1700:
+                        self.agriPayload.payloadTesting = 2
+                    elif recievedMsg.chan7_raw < 1700 and recievedMsg.chan7_raw > 1300:
+                        self.agriPayload.payloadTesting = 1
                     else:
-                        self.testing = False
+                        if self.agriPayload.payloadTesting != 0:
+                            self.agriPayload.dripStopTrigger = True
+                        self.agriPayload.payloadTesting = 0
 
                 if recievedMsg.get_type() == "PARAM_SET":
                     #paramId = recievedMsg.param_id.strip(b"\x00").decode()
@@ -540,7 +541,7 @@ class GA3ACompanionComputer(CompanionComputer):
             self.resumeState = 0
 
         # update the required flow rate to the agri payload handlere
-        self.agriPayload.update(self.testing, self.speed, self.startWP, self.endWP, self.currentWP, self.currentMode)
+        self.agriPayload.update(self.speed, self.startWP, self.endWP, self.currentWP, self.currentMode)
 
         # send the data to GCS
         resumeButtonEnable = False

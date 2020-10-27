@@ -81,6 +81,14 @@ class AgriPayload:
         # Debug Timer
         self.debugTime = time.time()
         
+        # Agri Specific vehicle status
+        self.payloadTesting = 0
+        
+        # Drip Stopping parameters
+        self.dripStopTrigger = False
+        self.dripStopNozzleTimer = time.time()
+        self.dripStopNozzleMaxTime = 10 # s
+        
     def update_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:
             self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
@@ -90,7 +98,7 @@ class AgriPayload:
         self.dt = currTime - self.time
         self.time = currTime
         
-    def update(self, testing, speed, startWP, endWP, currentWP, flightMode):
+    def update(self, speed, startWP, endWP, currentWP, flightMode):
         # update timer
         self.update_time()
         
@@ -122,7 +130,14 @@ class AgriPayload:
             else:
                 self.payloadOverStartTime = time.time()
             
+            # Keep timer updated if we want to trigger the Drip stop
+            self.dripStopNozzleTimer = time.time()
+            
         else:
+            # If we have just stopped spraying, start for drip stopping run
+            if self.shouldSpraying:
+                self.dripStopTrigger = True
+            
             self.shouldSpraying = False
             # Change the max speed setpoint
             self.maxSpeedSetPoint = 8
@@ -136,15 +151,30 @@ class AgriPayload:
             self.calc_nozz_pwm(actualRPM)
             
         else:
-            if testing:
-                # self.nozzPWM = 1999
-                # self.pumpPWM = 1400
+            if self.payloadTesting == 2:
                 self.reqFlowRate = self.maxFlowRate
                     
                 self.calc_pump_pwm(actualFlowRate)
                 self.calc_nozz_pwm(actualRPM)
-            else:
-                self.nozzPWM = self.nozzMinPWM
+                
+                # Keep timer updated if we want to trigger the Drip stop
+                self.dripStopNozzleTimer = time.time()
+                
+            elif self.payloadTesting == 1:
+                self.nozzPWM = 1000
+
+                self.reqFlowRate = self.maxFlowRate
+                    
+                self.calc_pump_pwm(actualFlowRate)
+            else:        
+                if self.dripStopTrigger:
+                    if (time.time() - self.dripStopNozzleTimer) < self.dripStopNozzleMaxTime:
+                        self.nozzPWM = 1500
+                    else:
+                        self.dripStopTrigger = False
+                else:
+                    self.nozzPWM = self.nozzMinPWM
+                    
                 self.pumpPWM = self.pumpAbsMinPWM
                 self.reqFlowRate = 0
                 
