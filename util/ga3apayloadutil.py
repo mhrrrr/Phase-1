@@ -151,7 +151,7 @@ class AgriPayload:
             self.calc_nozz_pwm(actualRPM)
             
         else:
-            if self.payloadTesting == 2:
+            if self.payloadTesting == 1:
                 self.reqFlowRate = self.maxFlowRate
                     
                 self.calc_pump_pwm(actualFlowRate)
@@ -160,7 +160,7 @@ class AgriPayload:
                 # Keep timer updated if we want to trigger the Drip stop
                 self.dripStopNozzleTimer = time.time()
                 
-            elif self.payloadTesting == 1:
+            elif self.payloadTesting == 2:
                 self.nozzPWM = 1000
 
                 self.reqFlowRate = self.maxFlowRate

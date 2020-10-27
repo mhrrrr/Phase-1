@@ -113,6 +113,7 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "HEARTBEAT":
             # Update Mode
             self.currentMode = self.mavlinkInterface.mavConnection.flightmode
+            logging.info("FlightMode, " + self.currentMode)
 
             # Handle Message
             if recievedMsg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
@@ -500,7 +501,8 @@ class MavlinkInterface(object):
                 self.kill_all_threads()
                 break
 
-            except:
+            except Exception as e:
+                logging.exception(e)
                 if not self.disconnectEvent.is_set():
                     self.disconnectEvent.set()
 
@@ -522,7 +524,8 @@ class MavlinkInterface(object):
                     self.kill_all_threads()
                     break
 
-                except:
+                except Exception as e:
+                    logging.exception(e)
                     if not self.disconnectEvent.is_set():
                         self.disconnectEvent.set()
             else:
