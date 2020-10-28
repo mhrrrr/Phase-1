@@ -567,10 +567,12 @@ class NPNT(object):
 
 class VTDS(object):
     def __init__(self, sitlType):
+        # Enabling VTDS
+        self.vtdsEnabled = False
+        
         # Handling for SITL
         self.isSITL = False
-        if sitlType is not None:
-            self.sitlType = sitlType
+        if sitlType is not None or not self.vtdsEnabled:
             self.isSITL = True
             
         channel = 1     #I2C1 on Pin 3 & 5
