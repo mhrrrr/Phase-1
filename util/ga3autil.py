@@ -65,8 +65,8 @@ class GA3ACompanionComputer(CompanionComputer):
         self.paramDict["CLEARANCE_ALT"] = [i,
                                            self.set_clearance_altitude, 
                                            self.get_clearance_altitude, 
-                                           2, 
-                                           40]
+                                           5, 
+                                           35]
         i = i+1
         self.paramDict["PESTI_PER_ACRE"] = [i,
                                             self.agriPayload.set_pestiscide_per_acre, 
@@ -278,13 +278,13 @@ class GA3ACompanionComputer(CompanionComputer):
             
     def resume_mission(self):
         sendCount = 10
-        logging.info("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
+        logging.warn("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
         
         if self.resumeOn:
-            logging.info("Resume, " + self.currentMode)
-            logging.info("Resume, %f"%(self.terrainAlt))
-            logging.info("Resume, %f, %f"%(np.math.degrees(self.yaw), self.missionYaw))
-            logging.info("Resume, %.7f, %.7f, %.7f, %.7f"%(self.RTLLat, self.RTLLon, self.lat, self.lon))
+            logging.warn("Resume, " + self.currentMode)
+            logging.warn("Resume, %f, %f, %f"%(self.terrainAlt, self.missionAlt, self.clearanceAlt))
+            logging.warn("Resume, %f, %f"%(np.math.degrees(self.yaw), self.missionYaw))
+            logging.warn("Resume, %.7f, %.7f, %.7f, %.7f"%(self.RTLLat, self.RTLLon, self.lat, self.lon))
             # Check vehicle is armed or not
             if self.isArmed:
                 # First change to GUIDED mode
@@ -309,7 +309,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
             # TakeOff
             if self.resumeState == 2:
-                if self.terrainAlt > 1.5:
+                if self.terrainAlt > 1:
                     self.resumeSendingCounter = 0
                     self.resumeState = 3
                 else:
@@ -324,7 +324,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                            0, # param4
                                                                                                            0, # param5
                                                                                                            0, # param6
-                                                                                                           3) # param7 (alt)
+                                                                                                           4) # param7 (alt)
                                                               )
                         self.resumeSendingCounter = self.resumeSendingCounter + 1
                     return
