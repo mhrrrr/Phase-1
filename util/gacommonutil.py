@@ -24,7 +24,7 @@ from sys import platform
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
-        self.version = "v01.01"
+        self.version = "v01.02"
         
         # Threading Lock
         self.lock = threading.Lock()
@@ -220,10 +220,10 @@ class CompanionComputer(object):
     def change_log_file_name(self):
         if platform == "win32":
             return
-            
+        
         if self.globalTime > 0 and os.path.exists("temp"):
             currentTime = pytz.utc.localize(datetime.utcfromtimestamp(self.globalTime)).astimezone(self.npnt.timeZone)
-            fileName = "companion_comp_log" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
+            fileName = "companion_comp_log_" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
             os.rename("temp",fileName)
 
     def check_pause(self):
@@ -761,6 +761,7 @@ class CountDown(object):
         self.started = False
         self.finished = False
         self.interval = interval
+        self._timer = None
         
     def start(self):
         if not self.started:
@@ -773,6 +774,7 @@ class CountDown(object):
         self.finished = True
         
     def reset(self):
-        self._timer.cancel()
+        if self._timer is not None:
+            self._timer.cancel()
         self.started = False
         self.finished = False

@@ -9,6 +9,7 @@
 ### END INIT INFO
 
 sudo pigpiod
+sleep 5
 export MAVLINK20="1"
 cd /home/pi/Desktop/GACompanionComp/log/
 
