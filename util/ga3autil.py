@@ -283,6 +283,9 @@ class GA3ACompanionComputer(CompanionComputer):
                             self.agriPayload.maxFlowRate = float(splittedLine[1])
                         if splittedLine[0].strip() == "DROPLET_SIZE":
                             self.agriPayload.targetPS = float(splittedLine[1])
+                        if splittedLine[0].strip() == "DROPLET_SIZE":
+                            if self.agriPayload.flowSensor is not None:
+                                self.agriPayload.flowSensor.calibFactorMultiPlier = float(splittedLine[1])
     
     def save_params_to_file(self):
         with open('agri_param', 'w') as f:
@@ -292,6 +295,8 @@ class GA3ACompanionComputer(CompanionComputer):
             f.write("SWATH," + str(self.agriPayload.swath) + "\n")
             f.write("MAX_FLOW_RATE," + str(self.agriPayload.maxFlowRate) + "\n")
             f.write("DROPLET_SIZE," + str(self.agriPayload.targetPS) + "\n")
+            if self.agriPayload.flowSensor is not None:
+                f.write("DROPLET_SIZE," + str(self.agriPayload.flowSensor.calibFactorMultiPlier) + "\n")
             
     def resume_mission(self):
         sendCount = 10

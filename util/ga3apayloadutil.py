@@ -515,7 +515,10 @@ class FlowSensor:
         self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
             
         self.flowRate = 0
-   
+        
+        # Calibration Factor
+        self.calibFactorMultiPlier = 1.0
+        
     def counter(self,g,l,t):
         # Increase count by 1 when pulse arrives
         self.count = self.count + 1
@@ -569,7 +572,7 @@ class FlowSensor:
             
             # handling sudden spikes. User previous reading in case of spike
             if abs(flowRate5Hz/1000 - self.flowRate) < 2:
-                self.flowRate = 0.98*actualFlowrate/1000.
+                self.flowRate = self.calibFactorMultiPlier*actualFlowrate/1000.
         else:
             self.flowRate=0
         

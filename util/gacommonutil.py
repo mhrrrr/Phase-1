@@ -20,7 +20,7 @@ import struct
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
-        self.version = "v00.14"
+        self.version = "v00.15"
         
         # Threading Lock
         self.lock = threading.Lock()
