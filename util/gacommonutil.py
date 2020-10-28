@@ -2,7 +2,8 @@
 """
 Created on Wed Mar 06 14:21:00 2019
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 # import necessary modules
@@ -23,7 +24,7 @@ from sys import platform
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
-        self.version = "v00.16"
+        self.version = "v01.00"
         
         # Threading Lock
         self.lock = threading.Lock()
@@ -220,7 +221,7 @@ class CompanionComputer(object):
         if platform == "win32":
             return
             
-        if self.globalTime > 0:
+        if self.globalTime > 0 and os.path.exists("temp"):
             currentTime = pytz.utc.localize(datetime.utcfromtimestamp(self.globalTime)).astimezone(self.npnt.timeZone)
             fileName = "companion_comp_log" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
             os.rename("temp",fileName)

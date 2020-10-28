@@ -12,6 +12,6 @@ sudo pigpiod
 export MAVLINK20="1"
 cd /home/pi/Desktop/GACompanionComp/log/
 
-/home/pi/Desktop/companionComp/bin/python3 /home/pi/Desktop/GACompanionComp/pymavlink_main.py --vehicle GA3A &
+/home/pi/Desktop/companionComp/bin/python3 /home/pi/Desktop/GACompanionComp/pymavlink_main.py --vehicle GA3A --fileLog &
 
 exit 0

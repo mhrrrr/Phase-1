@@ -2,7 +2,8 @@
 """
 Created on Wed Jul  8 14:07:56 2020
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 # import necessary modules

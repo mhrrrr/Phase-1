@@ -2,7 +2,8 @@
 """
 Created on Fri Mar  8 12:22:57 2019
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 import numpy as np

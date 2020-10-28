@@ -2,7 +2,8 @@
 """
 Created on Sat Jun 27 13:40:16 2020
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 from datetime import datetime
