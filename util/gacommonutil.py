@@ -8,7 +8,8 @@ Created on Wed Mar 06 14:21:00 2019
 # import necessary modules
 import time
 from threading import Timer
-import serial
+from datetime import datetime
+import pytz
 import logging
 from util.npnt import NPNT, listdir, path, remove, FlyingBreachedState, State
 import threading
@@ -16,11 +17,13 @@ from pymavlink import mavutil
 import queue
 import numpy as np
 import struct
+import os
+from sys import platform
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
-        self.version = "v00.15"
+        self.version = "v00.16"
         
         # Threading Lock
         self.lock = threading.Lock()
@@ -103,6 +106,9 @@ class CompanionComputer(object):
 
         # Record Home Location
         self.scheduledTaskList.append(ScheduleTask(1, self.record_home_location))
+        
+        # Update Log FileName Every 5 s
+        self.scheduledTaskList.append(ScheduleTask(5, self.change_log_file_name))
 
     # handle common messages
     def handle_recieved_message(self, recievedMsg):
@@ -209,6 +215,15 @@ class CompanionComputer(object):
                                                                                                              0,
                                                                                                              replyPayload))
             return
+        
+    def change_log_file_name(self):
+        if platform == "win32":
+            return
+            
+        if self.globalTime > 0:
+            currentTime = pytz.utc.localize(datetime.utcfromtimestamp(self.globalTime)).astimezone(self.npnt.timeZone)
+            fileName = "companion_comp_log" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
+            os.rename("temp",fileName)
 
     def check_pause(self):
         # check if rc 6 is more than 1800
