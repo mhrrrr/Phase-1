@@ -278,13 +278,13 @@ class GA3ACompanionComputer(CompanionComputer):
             
     def resume_mission(self):
         sendCount = 10
-        logging.warn("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
+        logging.info("Resume, %d, %d, %d"%(self.resumeSendingCounter, self.resumeOn, self.resumeState))
         
         if self.resumeOn:
-            logging.warn("Resume, " + self.currentMode)
-            logging.warn("Resume, %f, %f, %f"%(self.terrainAlt, self.missionAlt, self.clearanceAlt))
-            logging.warn("Resume, %f, %f"%(np.math.degrees(self.yaw), self.missionYaw))
-            logging.warn("Resume, %.7f, %.7f, %.7f, %.7f"%(self.RTLLat, self.RTLLon, self.lat, self.lon))
+            logging.info("Resume, " + self.currentMode)
+            logging.info("Resume, %f, %f, %f"%(self.terrainAlt, self.missionAlt, self.clearanceAlt))
+            logging.info("Resume, %f, %f"%(np.math.degrees(self.yaw), self.missionYaw))
+            logging.info("Resume, %.7f, %.7f, %.7f, %.7f"%(self.RTLLat, self.RTLLon, self.lat, self.lon))
             # Check vehicle is armed or not
             if self.isArmed:
                 # First change to GUIDED mode
