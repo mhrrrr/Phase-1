@@ -285,6 +285,7 @@ class GA3ACompanionComputer(CompanionComputer):
             logging.info("Resume, %f, %f, %f"%(self.terrainAlt, self.missionAlt, self.clearanceAlt))
             logging.info("Resume, %f, %f"%(np.math.degrees(self.yaw), self.missionYaw))
             logging.info("Resume, %.7f, %.7f, %.7f, %.7f"%(self.RTLLat, self.RTLLon, self.lat, self.lon))
+            logging.info("Resume, %d, %d"%(self.holdBeforeStartingAutoCountDown.started, self.holdBeforeStartingAutoCountDown.finished))
             # Check vehicle is armed or not
             if self.isArmed:
                 # First change to GUIDED mode
