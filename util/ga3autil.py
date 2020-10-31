@@ -521,6 +521,8 @@ class GA3ACompanionComputer(CompanionComputer):
             self.agriPayload.payloadRTLEngage = False
 
     def update(self):
+        currentMode = self.currentMode
+        
         # Rewrite mission file in case of mission is over
         if self.currentWP > self.endWP and (self.RTLWP>0):
             if self.missionOn:
@@ -531,7 +533,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
 
         # if mode changes to RTL from AUTO then store the current (Lat Lon) as RTL (Lat Lon)
-        if self.previousMode == 'AUTO' and self.currentMode == 'RTL':
+        if self.previousMode == 'AUTO' and currentMode == 'RTL':
             self.RTLLat = self.lat
             self.RTLLon = self.lon
             self.RTLWP = self.currentWP
@@ -540,13 +542,13 @@ class GA3ACompanionComputer(CompanionComputer):
         # Resume Mission Handling
         self.resume_mission()
 
-        if (self.resumeOn and self.currentMode != 'GUIDED' and self.resumeState > 1) or not self.isArmed:
+        if (self.resumeOn and currentMode != 'GUIDED' and self.resumeState > 1) or not self.isArmed:
             self.resumeSendingCounter = 0
             self.resumeOn = False
             self.resumeState = 0
 
         # update the required flow rate to the agri payload handlere
-        self.agriPayload.update(self.speed, self.startWP, self.endWP, self.currentWP, self.currentMode)
+        self.agriPayload.update(self.speed, self.startWP, self.endWP, self.currentWP, currentMode)
 
         # send the data to GCS
         resumeButtonEnable = False
@@ -566,7 +568,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                                                                                   int(resumeButtonEnable)))
 
         # Update Mode
-        self.previousMode = self.currentMode
+        self.previousMode = currentMode
         
     def update_vehicle_max_speed(self):
         
