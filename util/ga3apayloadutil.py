@@ -87,7 +87,7 @@ class AgriPayload:
         self.payloadTesting = 0
         
         # Drip Stopping parameters
-        self.dripStopCountDown = CountDown(10)
+        self.dripStopCountDown = CountDown(20)
         
         # Resume Function
         self.resumeRequestedSpray = False
