@@ -547,6 +547,7 @@ class GA3ACompanionComputer(CompanionComputer):
             self.resumeSendingCounter = 0
             self.resumeOn = False
             self.resumeState = 0
+            self.agriPayload.resumeRequestedSpray = False
 
         # update the required flow rate to the agri payload handlere
         self.agriPayload.update(self.speed, self.startWP, self.endWP, self.currentWP, currentMode)

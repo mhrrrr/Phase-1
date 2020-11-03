@@ -24,7 +24,7 @@ from sys import platform
 class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
-        self.version = "v01.06"
+        self.version = "v01.07"
         
         # Threading Lock
         self.lock = threading.Lock()
