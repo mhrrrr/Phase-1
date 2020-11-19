@@ -25,7 +25,7 @@ class CompanionComputer(object):
     def __init__(self, sitlType):
         # Version Control
         self.version = "v01.07"
-        
+
         # Threading Lock
         self.lock = threading.Lock()
 
@@ -107,7 +107,7 @@ class CompanionComputer(object):
 
         # Record Home Location
         self.scheduledTaskList.append(ScheduleTask(1, self.record_home_location))
-        
+
         # Update Log FileName Every 5 s
         self.scheduledTaskList.append(ScheduleTask(5, self.change_log_file_name))
 
@@ -176,7 +176,7 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "RANGEFINDER":
             self.terrainAlt = recievedMsg.distance
             return
-        
+
         if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
             self.npnt.uinChangeRequested = ''.join(map(chr,recievedMsg.uin[0:recievedMsg.size]))
             return
@@ -216,11 +216,11 @@ class CompanionComputer(object):
                                                                                                              0,
                                                                                                              replyPayload))
             return
-        
+
     def change_log_file_name(self):
         if platform == "win32":
             return
-        
+
         if self.globalTime > 0 and os.path.exists("temp"):
             currentTime = pytz.utc.localize(datetime.utcfromtimestamp(self.globalTime)).astimezone(self.npnt.timeZone)
             fileName = "companion_comp_log_" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
@@ -691,7 +691,6 @@ class FTP(object):
         if path.isdir(data):
             onlyfiles = [f for f in listdir(data) if path.isfile(path.join(data, f))]
         dirListString=''
-        print("contentOffset ",contentOffset)
         if(contentOffset<len(onlyfiles)):
             for i in range(contentOffset,len(onlyfiles)):
                 if(len(dirListString)==0):
@@ -767,17 +766,17 @@ class CountDown(object):
         self.finished = False
         self.interval = interval
         self._timer = None
-        
+
     def start(self):
         if not self.started:
             self.started = True
             self.finished = False
             self._timer = Timer(self.interval, self.time_complete)
             self._timer.start()
-            
+
     def time_complete(self):
         self.finished = True
-        
+
     def reset(self):
         if self._timer is not None:
             self._timer.cancel()
