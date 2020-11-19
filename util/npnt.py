@@ -2,7 +2,8 @@
 """
 Created on Sat Jun 27 13:40:16 2020
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 from datetime import datetime
@@ -567,10 +568,12 @@ class NPNT(object):
 
 class VTDS(object):
     def __init__(self, sitlType):
+        # Enabling VTDS
+        self.vtdsEnabled = False
+        
         # Handling for SITL
         self.isSITL = False
-        if sitlType is not None:
-            self.sitlType = sitlType
+        if sitlType is not None or not self.vtdsEnabled:
             self.isSITL = True
             
         channel = 1     #I2C1 on Pin 3 & 5

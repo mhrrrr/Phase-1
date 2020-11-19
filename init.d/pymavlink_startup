@@ -9,26 +9,10 @@
 ### END INIT INFO
 
 sudo pigpiod
+sleep 5
 export MAVLINK20="1"
 cd /home/pi/Desktop/GACompanionComp/log/
 
-name_log=log
-if [[ -e $name_log ]] ; then
-    i=0
-    while [[ -e $name_log-$i ]] ; do
-        let i++
-    done
-    name_log=$name_log-$i
-fi
-name_err=err
-if [[ -e $name_err ]] ; then
-    i=0
-    while [[ -e $name_err-$i ]] ; do
-        let i++
-    done
-    name_err=$name_err-$i
-fi
-
-/home/pi/Desktop/companionComp/bin/python3 /home/pi/Desktop/GACompanionComp/pymavlink_main.py --vehicle GA3A > "$name_log" 2>"$name_err" &
+/home/pi/Desktop/companionComp/bin/python3 /home/pi/Desktop/GACompanionComp/pymavlink_main.py --vehicle GA3A --fileLog &
 
 exit 0

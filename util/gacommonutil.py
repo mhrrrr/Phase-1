@@ -2,13 +2,15 @@
 """
 Created on Wed Mar 06 14:21:00 2019
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 # import necessary modules
 import time
 from threading import Timer
-import serial
+from datetime import datetime
+import pytz
 import logging
 from util.npnt import NPNT, listdir, path, remove, FlyingBreachedState, State
 import threading
@@ -16,9 +18,14 @@ from pymavlink import mavutil
 import queue
 import numpy as np
 import struct
+import os
+from sys import platform
 
 class CompanionComputer(object):
     def __init__(self, sitlType):
+        # Version Control
+        self.version = "v01.07"
+        
         # Threading Lock
         self.lock = threading.Lock()
 
@@ -100,6 +107,9 @@ class CompanionComputer(object):
 
         # Record Home Location
         self.scheduledTaskList.append(ScheduleTask(1, self.record_home_location))
+        
+        # Update Log FileName Every 5 s
+        self.scheduledTaskList.append(ScheduleTask(5, self.change_log_file_name))
 
     # handle common messages
     def handle_recieved_message(self, recievedMsg):
@@ -110,6 +120,7 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "HEARTBEAT":
             # Update Mode
             self.currentMode = self.mavlinkInterface.mavConnection.flightmode
+            logging.info("FlightMode, " + self.currentMode)
 
             # Handle Message
             if recievedMsg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
@@ -165,7 +176,7 @@ class CompanionComputer(object):
         if recievedMsg.get_type() == "RANGEFINDER":
             self.terrainAlt = recievedMsg.distance
             return
-
+        
         if recievedMsg.get_type() == "NPNT_UIN_REGISTER":
             self.npnt.uinChangeRequested = ''.join(map(chr,recievedMsg.uin[0:recievedMsg.size]))
             return
@@ -205,6 +216,15 @@ class CompanionComputer(object):
                                                                                                              0,
                                                                                                              replyPayload))
             return
+        
+    def change_log_file_name(self):
+        if platform == "win32":
+            return
+        
+        if self.globalTime > 0 and os.path.exists("temp"):
+            currentTime = pytz.utc.localize(datetime.utcfromtimestamp(self.globalTime)).astimezone(self.npnt.timeZone)
+            fileName = "companion_comp_log_" + currentTime.strftime("%Y_%m_%d_%H_%M_%d")
+            os.rename("temp",fileName)
 
     def check_pause(self):
         # check if rc 6 is more than 1800
@@ -212,6 +232,7 @@ class CompanionComputer(object):
         if self.rc6 is not None:
             if self.rc6 > 1800:
                 self.mavlinkInterface.sendingBlocked = True
+                logging.warn("Blocking Message sending")
             else:
                 self.mavlinkInterface.sendingBlocked = False
 
@@ -496,7 +517,8 @@ class MavlinkInterface(object):
                 self.kill_all_threads()
                 break
 
-            except:
+            except Exception as e:
+                logging.exception(e)
                 if not self.disconnectEvent.is_set():
                     self.disconnectEvent.set()
 
@@ -518,7 +540,8 @@ class MavlinkInterface(object):
                     self.kill_all_threads()
                     break
 
-                except:
+                except Exception as e:
+                    logging.exception(e)
                     if not self.disconnectEvent.is_set():
                         self.disconnectEvent.set()
             else:
@@ -737,3 +760,26 @@ def dist_between_lat_lon(lat1, lon1, lat2, lon2):
     c = 2 * np.arctan2(np.sqrt(a), np.sqrt(1 - a))
 
     return R * c
+
+class CountDown(object):
+    def __init__(self, interval):
+        self.started = False
+        self.finished = False
+        self.interval = interval
+        self._timer = None
+        
+    def start(self):
+        if not self.started:
+            self.started = True
+            self.finished = False
+            self._timer = Timer(self.interval, self.time_complete)
+            self._timer.start()
+            
+    def time_complete(self):
+        self.finished = True
+        
+    def reset(self):
+        if self._timer is not None:
+            self._timer.cancel()
+        self.started = False
+        self.finished = False

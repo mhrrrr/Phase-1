@@ -2,7 +2,8 @@
 """
 Created on Mon Feb 18 15:33:00 2019
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 ######################################################################
@@ -20,22 +21,33 @@ os.environ['MAVLINK20'] = "1"
 import argparse
 import logging
 
-# Define logging
-logging.basicConfig(
-    level=logging.INFO,
-#    level=logging.WARN,
-    format='%(asctime)s.%(msecs)03d,%(name)-12s,%(levelname)-8s,%(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
-)
-
 # handle arguments
 parser = argparse.ArgumentParser()
 parser.add_argument("--vehicle",help="Vehicle Name", type=str, dest="vehicle")
 parser.add_argument("--sitludp", action="store_true", dest="sitludp")
 parser.add_argument("--sitltcp", action="store_true", dest="sitltcp")
 parser.add_argument("--sitlcom", action="store_true", dest="sitlcom")
+parser.add_argument("--log", help="Logging Level", type=str, dest="logLevel", default="INFO")
+parser.add_argument("--fileLog", action="store_true", dest="fileLogEnabled")
 
 args = parser.parse_args()
+
+# Define logging
+logNumericLevel = getattr(logging, args.logLevel.upper(), None)
+if not isinstance(logNumericLevel, int):
+    raise ValueError('Invalid log level: %s' % args.logLevel)
+
+if args.fileLogEnabled:
+    logging.basicConfig(
+        level=logNumericLevel,
+        filename="temp",
+        format='%(asctime)s.%(msecs)03d,%(name)-12s,%(levelname)-8s,%(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
+else:
+    logging.basicConfig(
+        level=logNumericLevel,
+        format='%(asctime)s.%(msecs)03d,%(name)-12s,%(levelname)-8s,%(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
 
 # Handle SITL    
 sitlType = None

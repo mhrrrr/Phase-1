@@ -2,7 +2,8 @@
 """
 Created on Fri Mar  8 12:22:57 2019
 
-@author: sachchit
+@author: Sachchit Vekaria
+@Organization: General Aeronautics Pvt Ltd
 """
 
 import numpy as np
@@ -11,6 +12,7 @@ import struct
 import serial
 import copy
 import logging
+from util.gacommonutil import CountDown
 
 class AgriPayload:
     def __init__(self, isSITL):  
@@ -57,9 +59,9 @@ class AgriPayload:
             
             # Initialize Sensor handling class
             self.pibStatus = PIBStatus('/dev/ttyDCU')
-            self.flowSensor = FlowSensor(pigpio)
+            self.flowSensor = FlowSensor(pigpio, isSITL)
         else:
-            self.flowSensor = None
+            self.flowSensor = FlowSensor(None, isSITL)
 
         self.pumpPin = 18
         self.nozzPin = 19
@@ -81,6 +83,46 @@ class AgriPayload:
         # Debug Timer
         self.debugTime = time.time()
         
+        # Agri Specific vehicle status
+        self.payloadTesting = 0
+        
+        # Drip Stopping parameters
+        self.dripStopCountDown = CountDown(20)
+        
+        # Resume Function
+        self.resumeRequestedSpray = False
+        
+    # Parameter Getter and Setter
+    def set_remaining_payload(self, value):
+        self.remainingPayload = value
+    
+    def set_pestiscide_per_acre(self, value):
+        self.pesticidePerAcre = value
+        
+    def set_swath(self, value):
+        self.swath = value
+        
+    def set_max_flow_rate(self, value):
+        self.maxFlowRate = value
+        
+    def set_particle_size(self, value):
+        self.targetPS = value
+        
+    def get_remaining_payload(self):
+        return self.remainingPayload
+    
+    def get_pestiscide_per_acre(self):
+        return self.pesticidePerAcre
+        
+    def get_swath(self):
+        return self.swath
+        
+    def get_max_flow_rate(self):
+        return self.maxFlowRate
+        
+    def get_particle_size(self):
+        return self.targetPS
+        
     def update_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:
             self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
@@ -90,7 +132,7 @@ class AgriPayload:
         self.dt = currTime - self.time
         self.time = currTime
         
-    def update(self, testing, speed, startWP, endWP, currentWP, flightMode):
+    def update(self, speed, startWP, endWP, currentWP, flightMode):
         # update timer
         self.update_time()
         
@@ -98,14 +140,11 @@ class AgriPayload:
         actualRPM = 0 #self.pibStatus.status['ATOMIZER_RPM']
         
         # actual flow rate
-        if self.flowSensor:
-            actualFlowRate = self.flowSensor.flowRate
-        else:
-            actualFlowRate = 0.5
+        actualFlowRate = self.flowSensor.flowRate
         
         # check whether we should be spraying
         logging.info("WP, %d, %d, %d"%(startWP, currentWP, endWP))
-        if currentWP <= endWP and currentWP > startWP and endWP > 1 and flightMode == 'AUTO':
+        if (currentWP <= endWP and currentWP > startWP and endWP > 1 and flightMode == 'AUTO') or self.resumeRequestedSpray:
             # Allow sending max speed again to vehicle if the shouldSpraying state have changed
             if not self.shouldSpraying:
                 self.maxSpeedSentCount = 0
@@ -116,13 +155,17 @@ class AgriPayload:
             self.maxSpeedSetPoint = self.maxFlowRate/60./self.swath/sprayDensity + 0.15
             
             # Payload Over RTL
-            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1800 and self.remainingPayload < 2:
+            if actualFlowRate < 0.1 and self.reqFlowRate > 0.4 and self.pumpPWM > 1800 and self.remainingPayload < 3:
                 if (time.time() - self.payloadOverStartTime) > 2:
                     self.payloadRTLEngage = True
             else:
                 self.payloadOverStartTime = time.time()
             
         else:
+            # If we have just stopped spraying, start for drip stopping run
+            if self.shouldSpraying:
+                self.dripStopCountDown.start()
+            
             self.shouldSpraying = False
             # Change the max speed setpoint
             self.maxSpeedSetPoint = 8
@@ -135,19 +178,34 @@ class AgriPayload:
             self.calc_pump_pwm(actualFlowRate)
             self.calc_nozz_pwm(actualRPM)
             
+            # Reset Counter
+            self.dripStopCountDown.reset()
+            
         else:
-            if testing:
-                # self.nozzPWM = 1999
-                # self.pumpPWM = 1400
+            if self.payloadTesting == 1:
                 self.reqFlowRate = self.maxFlowRate
                     
                 self.calc_pump_pwm(actualFlowRate)
                 self.calc_nozz_pwm(actualRPM)
-            else:
-                self.nozzPWM = self.nozzMinPWM
+                
+            elif self.payloadTesting == 2:
+                self.nozzPWM = 1000
+
+                self.reqFlowRate = self.maxFlowRate
+                    
+                self.calc_pump_pwm(actualFlowRate)
+                
+            else:     
+                if self.dripStopCountDown.started:
+                    if not self.dripStopCountDown.finished:
+                        self.nozzPWM = 1500
+                    else:
+                        self.dripStopCountDown.reset()
+                else:
+                    self.nozzPWM = self.nozzMinPWM
                 self.pumpPWM = self.pumpAbsMinPWM
                 self.reqFlowRate = 0
-                
+        
         # update the pwm in DCU
         self.update_pwm()
 
@@ -476,20 +534,32 @@ class PIBStatus:
 
 class FlowSensor:
     # This handles pulse based flow sensors
-    def __init__(self, pigpio, pin=11):
+    def __init__(self, pigpio, isSITL, pin=11):
+        self.isSITL = isSITL
+        
         self.pin = pin
         self.count = 0
         self.countList = [0]*10
         
-        self.pi = pigpio.pi()
-        self.pi.set_mode(self.pin, pigpio.INPUT)
-        self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
+        if not isSITL:
+            self.pi = pigpio.pi()
+            self.pi.set_mode(self.pin, pigpio.INPUT)
+            self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
             
         self.flowRate = 0
-   
+        
+        # Calibration Factor
+        self.calibFactorMultiPlier = 1.0
+        
     def counter(self,g,l,t):
         # Increase count by 1 when pulse arrives
         self.count = self.count + 1
+        
+    def set_calib_factor_multiplier(self, value):
+        self.calibFactorMultiPlier = value
+        
+    def get_calib_factor_multiplier(self):
+        return self.calibFactorMultiPlier
        
     def calc_flow_rate(self):
         # This function will be called at 5 Hz
@@ -500,8 +570,11 @@ class FlowSensor:
         
         actualFlowrate = 0
         
+        if self.isSITL:
+            count = 5
+        
         # Don't record very low flowrate as it can be errorneous
-        if count > 6:
+        if count > 4:
             # update the queue with new reading
             self.countList[:-1] = self.countList[1:]
             self.countList[-1] = count
@@ -540,7 +613,7 @@ class FlowSensor:
             
             # handling sudden spikes. User previous reading in case of spike
             if abs(flowRate5Hz/1000 - self.flowRate) < 2:
-                self.flowRate = 0.98*actualFlowrate/1000.
+                self.flowRate = self.calibFactorMultiPlier*actualFlowrate/1000.
         else:
             self.flowRate=0
         
