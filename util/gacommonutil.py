@@ -330,7 +330,7 @@ class CompanionComputer(object):
                                                                                            6)) # RTL
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_statustext_message(mavutil.mavlink.MAV_SEVERITY_CRITICAL,
                                                                                              "FAILSAFE: GeoFence Breach".encode()))
-            
+
             self.breached = True
         else:
             self.breached = False
@@ -668,14 +668,19 @@ class FTP(object):
         if path.isdir(data):
             onlyfiles = [f for f in listdir(data) if path.isfile(path.join(data, f))]
         dirListString=''
+        print("contentOffset ",contentOffset)
         if(contentOffset<len(onlyfiles)):
             for i in range(contentOffset,len(onlyfiles)):
                 if(len(dirListString)==0):
                     if(len(dirListString) + len(onlyfiles[i]) <=200):
                         dirListString = dirListString + onlyfiles[i]
+                    else:
+                        break
                 else:
                     if(len(dirListString) + len(':') + len(onlyfiles[i]) <=200):
                         dirListString = dirListString + ':' + onlyfiles[i]
+                    else:
+                        break
             payloadVal[3]=128
             payloadData  = list(dirListString.encode())
             size=len(payloadData)
