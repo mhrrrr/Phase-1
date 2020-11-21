@@ -97,15 +97,22 @@ class GA3ACompanionComputer(CompanionComputer):
                                            self.agriPayload.flowSensor.get_calib_factor_multiplier, 
                                            0.5, 
                                            1.5]
+        i = i+1                  
+        self.paramDict["PIB_ENABLED"] = [i,
+                                         self.agriPayload.pibStatus.set_pib_enabled, 
+                                         self.agriPayload.pibStatus.get_pib_enabled, 
+                                         0, 
+                                         1]
         
         self.numParams = len(self.paramDict.keys())
-                          
         
         # Read parameter file
         self.load_params_from_file()
-
+        
     def init(self):
         super().init()
+        
+        self.agriPayload.pibStatus.init()
 
         # set data stream rate
         self.set_data_stream()

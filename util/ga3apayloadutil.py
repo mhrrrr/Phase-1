@@ -189,7 +189,7 @@ class AgriPayload:
                 self.calc_nozz_pwm(actualRPM)
                 
             elif self.payloadTesting == 2:
-                self.nozzPWM = 1000
+                self.nozzPWM = self.nozzMinPWM
 
                 self.reqFlowRate = self.maxFlowRate
                     
@@ -340,7 +340,13 @@ class AgriPayload:
 
         if not self.isSITL:
             self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
-            self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
+            if not self.pibStatus.pibEnabled:
+                if self.nozzPWM > self.nozzMinPWM:
+                    self.pi.write(self.nozzPin, 1)
+                else:
+                    self.pi.write(self.nozzPin, 0)
+            else:
+                self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
         
 ###############################################################################
         
@@ -391,9 +397,12 @@ class PIBStatus:
         self.nozzleConfiguration = 0b00111100
         
         # Initialize
-        self.init()
+        self.pibEnabled = True
         
     def init(self):
+        if not self.pibEnabled:
+            return
+        
         while True:
             # keep trying  to open port unitl succesful
             try:
@@ -408,8 +417,18 @@ class PIBStatus:
             except KeyboardInterrupt:
                 raise KeyboardInterrupt
         self.send_nozzle_config()
+    
+    def set_pib_enabled(self, value):
+        if value == 0 or value == 1:
+            self.pibEnabled = bool(value)
+            
+    def get_pib_enabled(self):
+        return int(self.pibEnabled)
                 
     def update(self):
+        if not self.pibEnabled:
+            return
+        
         # read the data
         data = self.ser.readline()
         self.ser.reset_input_buffer()
