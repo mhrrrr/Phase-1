@@ -125,8 +125,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
         
         # Schedule the payload sensors readings
-        if not self.isSITL:
-            self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
+        self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
             
         self.scheduledTaskList.append(ScheduleTask(0.2, self.agriPayload.flowSensor.calc_flow_rate))
 

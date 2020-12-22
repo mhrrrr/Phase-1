@@ -57,11 +57,9 @@ class AgriPayload:
             import pigpio
             self.pi = pigpio.pi()
             
-            # Initialize Sensor handling class
-            self.pibStatus = PIBStatus('/dev/ttyDCU')
-            self.flowSensor = FlowSensor(pigpio, isSITL)
-        else:
-            self.flowSensor = FlowSensor(None, isSITL)
+        # Initialize Sensor handling class
+        self.pibStatus = PIBStatus(isSITL)
+        self.flowSensor = FlowSensor(isSITL)
 
         self.pumpPin = 18
         self.nozzPin = 19
@@ -355,8 +353,10 @@ class PIBStatus:
     #
     # Also, it will have additional functionalities like storing for future
     # data analysis
-    def __init__(self, serialPort):
-        self.serial = serialPort
+    def __init__(self, isSITL):
+        self.isSITL = isSITL
+        
+        self.serial = '/dev/ttyDCU'
         
         # All data recieved from PIB is stored in this dictionary
         self.status = {'ATOMIZER_RPM': np.zeros(6),
@@ -403,6 +403,9 @@ class PIBStatus:
         if not self.pibEnabled:
             return
         
+        if self.isSITL:
+            return
+        
         while True:
             # keep trying  to open port unitl succesful
             try:
@@ -427,6 +430,9 @@ class PIBStatus:
                 
     def update(self):
         if not self.pibEnabled:
+            return
+        
+        if self.isSITL:
             return
         
         # read the data
@@ -458,7 +464,7 @@ class PIBStatus:
         
         # process data only if something is there in the data
         if extractedData:            
-            if (len(extractedData) is not 3):
+            if (len(extractedData) != 3):
                 
                 # Check LRC
                 lrc = self.calc_lrc(data)
@@ -515,7 +521,7 @@ class PIBStatus:
     
     def update_data(self, extractedData):
         # Recheck data length
-        if len(extractedData) is 21:
+        if len(extractedData) == 21:
             self.status['ATOMIZER_RPM'] = extractedData[2:8]
             self.status['ATOMIZER_CURRENT'] = np.asarray(extractedData[8:14])/100.
             self.status['PUMP_CURRENT'] = np.asarray(extractedData[14:16])/100.
@@ -553,7 +559,7 @@ class PIBStatus:
 
 class FlowSensor:
     # This handles pulse based flow sensors
-    def __init__(self, pigpio, isSITL, pin=11):
+    def __init__(self, isSITL, pin=11):
         self.isSITL = isSITL
         
         self.pin = pin
@@ -561,6 +567,7 @@ class FlowSensor:
         self.countList = [0]*10
         
         if not isSITL:
+            import pigpio
             self.pi = pigpio.pi()
             self.pi.set_mode(self.pin, pigpio.INPUT)
             self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
