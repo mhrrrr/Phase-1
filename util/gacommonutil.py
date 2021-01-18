@@ -22,7 +22,7 @@ import os
 from sys import platform
 
 class CompanionComputer(object):
-    def __init__(self, sitlType):
+    def __init__(self, sitlType, sitlport):
         # Version Control
         self.version = "v01.09"
 
@@ -34,9 +34,10 @@ class CompanionComputer(object):
         if sitlType is not None:
             self.sitlType = sitlType
             self.isSITL = True
+        self.sitlPort = sitlport
 
         # Instance Mavlink Communication class
-        self.mavlinkInterface = MavlinkInterface(sitlType)
+        self.mavlinkInterface = MavlinkInterface(sitlType, sitlport)
 
         # Vehicle Status
         self.rc6 = 0
@@ -393,12 +394,13 @@ class CompanionComputer(object):
 
 class MavlinkInterface(object):
     # This class handles all the Mavlink Messaging
-    def __init__(self, sitlType):
+    def __init__(self, sitlType, sitlPort):
         # Handling for SITL
         self.isSITL = False
         if sitlType is not None:
             self.sitlType = sitlType
             self.isSITL = True
+        self.sitlPort = sitlPort
 
         # Initialize connection variables
         self.mavConnection = None
@@ -457,11 +459,11 @@ class MavlinkInterface(object):
                 # Create the connection
                 if self.isSITL:
                     if self.sitlType == 'tcp':
-                        self.mavConnection = mavutil.mavlink_connection('tcp:127.0.0.1:5760',
+                        self.mavConnection = mavutil.mavlink_connection('tcp:127.0.0.1:'+str(self.sitlPort),
                                                                    source_system=1,
                                                                    source_component=10)
                     elif self.sitlType == 'udp':
-                        self.mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:14551',
+                        self.mavConnection = mavutil.mavlink_connection('udp:127.0.0.1:'+str(self.sitlPort),
                                                                    source_system=1,
                                                                    source_component=10)
                     elif self.sitlType == 'com':

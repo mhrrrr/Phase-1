@@ -19,9 +19,9 @@ import os
 from collections import OrderedDict
 
 class GA3ACompanionComputer(CompanionComputer):
-    def __init__(self, sitlType):
+    def __init__(self, sitlType, sitlPort):
         # Initialize super class
-        super().__init__(sitlType)
+        super().__init__(sitlType, sitlPort)
 
         # Threading Lock for TestCompanionComputer Class
         self.handleRecievedMsgThread = None

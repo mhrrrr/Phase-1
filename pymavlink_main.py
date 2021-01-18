@@ -29,7 +29,10 @@ parser.add_argument("--sitltcp", action="store_true", dest="sitltcp")
 parser.add_argument("--sitlcom", action="store_true", dest="sitlcom")
 parser.add_argument("--log", help="Logging Level", type=str, dest="logLevel", default="INFO")
 parser.add_argument("--fileLog", action="store_true", dest="fileLogEnabled")
-
+parser.add_argument("--tcpport", type=int, required=False, default=5760,
+    help="defines the tcp port at which mavlink is connected")
+parser.add_argument("--udpport", type=int, required=False, default=14551,
+                    help="defines the tcp port at which mavlink is connected")
 args = parser.parse_args()
 
 # Define logging
@@ -51,13 +54,19 @@ else:
 
 # Handle SITL    
 sitlType = None
+sitlPort = None
 if args.sitludp:
     sitlType = 'udp'
+    if args.udpport:
+        sitlPort = args.udpport
 if args.sitltcp:
     sitlType = 'tcp'
+    if args.tcpport:
+        sitlPort = args.tcpport
 if args.sitlcom:
     sitlType = 'com'
-    
+
+
 # define vehicle
 vehicles = ['GA3', 'GA3A', 'Test']
 vehicle = args.vehicle
@@ -78,7 +87,7 @@ else:
 
 try:
     # Initialize Companion Computer
-    companionComp = CompanionComp(sitlType)
+    companionComp = CompanionComp(sitlType, sitlPort)
     
     # Start Companion Computer
     companionComp.init()
