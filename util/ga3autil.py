@@ -19,9 +19,9 @@ import os
 from collections import OrderedDict
 
 class GA3ACompanionComputer(CompanionComputer):
-    def __init__(self, sitlType):
+    def __init__(self, sitlType, sitlPort):
         # Initialize super class
-        super().__init__(sitlType)
+        super().__init__(sitlType, sitlPort)
 
         # Threading Lock for TestCompanionComputer Class
         self.handleRecievedMsgThread = None
@@ -97,15 +97,22 @@ class GA3ACompanionComputer(CompanionComputer):
                                            self.agriPayload.flowSensor.get_calib_factor_multiplier, 
                                            0.5, 
                                            1.5]
+        i = i+1                  
+        self.paramDict["PIB_ENABLED"] = [i,
+                                         self.agriPayload.pibStatus.set_pib_enabled, 
+                                         self.agriPayload.pibStatus.get_pib_enabled, 
+                                         0, 
+                                         1]
         
         self.numParams = len(self.paramDict.keys())
-                          
         
         # Read parameter file
         self.load_params_from_file()
-
+        
     def init(self):
         super().init()
+        
+        self.agriPayload.pibStatus.init()
 
         # set data stream rate
         self.set_data_stream()
@@ -118,8 +125,7 @@ class GA3ACompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
         
         # Schedule the payload sensors readings
-        if not self.isSITL:
-            self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
+        self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
             
         self.scheduledTaskList.append(ScheduleTask(0.2, self.agriPayload.flowSensor.calc_flow_rate))
 

@@ -57,11 +57,9 @@ class AgriPayload:
             import pigpio
             self.pi = pigpio.pi()
             
-            # Initialize Sensor handling class
-            self.pibStatus = PIBStatus('/dev/ttyDCU')
-            self.flowSensor = FlowSensor(pigpio, isSITL)
-        else:
-            self.flowSensor = FlowSensor(None, isSITL)
+        # Initialize Sensor handling class
+        self.pibStatus = PIBStatus(isSITL)
+        self.flowSensor = FlowSensor(isSITL)
 
         self.pumpPin = 18
         self.nozzPin = 19
@@ -189,7 +187,7 @@ class AgriPayload:
                 self.calc_nozz_pwm(actualRPM)
                 
             elif self.payloadTesting == 2:
-                self.nozzPWM = 1000
+                self.nozzPWM = self.nozzMinPWM
 
                 self.reqFlowRate = self.maxFlowRate
                     
@@ -340,7 +338,13 @@ class AgriPayload:
 
         if not self.isSITL:
             self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
-            self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
+            if not self.pibStatus.pibEnabled:
+                if self.nozzPWM > self.nozzMinPWM:
+                    self.pi.write(self.nozzPin, 1)
+                else:
+                    self.pi.write(self.nozzPin, 0)
+            else:
+                self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
         
 ###############################################################################
         
@@ -349,8 +353,10 @@ class PIBStatus:
     #
     # Also, it will have additional functionalities like storing for future
     # data analysis
-    def __init__(self, serialPort):
-        self.serial = serialPort
+    def __init__(self, isSITL):
+        self.isSITL = isSITL
+        
+        self.serial = '/dev/ttyDCU'
         
         # All data recieved from PIB is stored in this dictionary
         self.status = {'ATOMIZER_RPM': np.zeros(6),
@@ -391,9 +397,15 @@ class PIBStatus:
         self.nozzleConfiguration = 0b00111100
         
         # Initialize
-        self.init()
+        self.pibEnabled = True
         
     def init(self):
+        if not self.pibEnabled:
+            return
+        
+        if self.isSITL:
+            return
+        
         while True:
             # keep trying  to open port unitl succesful
             try:
@@ -408,8 +420,21 @@ class PIBStatus:
             except KeyboardInterrupt:
                 raise KeyboardInterrupt
         self.send_nozzle_config()
+    
+    def set_pib_enabled(self, value):
+        if value == 0 or value == 1:
+            self.pibEnabled = bool(value)
+            
+    def get_pib_enabled(self):
+        return int(self.pibEnabled)
                 
     def update(self):
+        if not self.pibEnabled:
+            return
+        
+        if self.isSITL:
+            return
+        
         # read the data
         data = self.ser.readline()
         self.ser.reset_input_buffer()
@@ -534,7 +559,7 @@ class PIBStatus:
 
 class FlowSensor:
     # This handles pulse based flow sensors
-    def __init__(self, pigpio, isSITL, pin=11):
+    def __init__(self, isSITL, pin=11):
         self.isSITL = isSITL
         
         self.pin = pin
@@ -542,6 +567,7 @@ class FlowSensor:
         self.countList = [0]*10
         
         if not isSITL:
+            import pigpio
             self.pi = pigpio.pi()
             self.pi.set_mode(self.pin, pigpio.INPUT)
             self.pi.callback(self.pin, pigpio.RISING_EDGE, self.counter)
