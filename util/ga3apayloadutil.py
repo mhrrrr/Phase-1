@@ -439,7 +439,7 @@ class PIBStatus:
         
         # process data only if something is there in the data
         if extractedData:            
-            if (len(extractedData) is not 3):
+            if (len(extractedData) != 3):
                 
                 # Check LRC
                 lrc = self.calc_lrc(data)
@@ -496,7 +496,7 @@ class PIBStatus:
     
     def update_data(self, extractedData):
         # Recheck data length
-        if len(extractedData) is 21:
+        if len(extractedData) == 21:
             self.status['ATOMIZER_RPM'] = extractedData[2:8]
             self.status['ATOMIZER_CURRENT'] = np.asarray(extractedData[8:14])/100.
             self.status['PUMP_CURRENT'] = np.asarray(extractedData[14:16])/100.
