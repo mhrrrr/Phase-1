@@ -1695,7 +1695,7 @@
       <field type="uint8_t" name="target_system">System ID</field>
       <field type="uint8_t" name="target_component">Component ID</field>
       <field type="uint8_t" name="arming_allowed" units="boolean">Arming is Allowed or not</field>
-	  <field type="char[50]" name="reason">What is reason if arming is not allowed</field>
+	  <field type="char[40]" name="reason">What is reason if arming is not allowed</field>
     </message>
 	<message id="6001" name="NPNT_REQ_LOGS">
       <description>1)Request send from GCS to Companion Computer to prepare logs to download, and to note current date and time. 2)Confirmation from Comp. Computer to GCS to initiate downloading </description>
