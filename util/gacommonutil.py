@@ -494,7 +494,6 @@ class MavlinkInterface(object):
 
                 self.connected = True
                 self.recievingThread = threading.Thread(target=self.recieving_loop)
-                # Insert DownloadLogs here
                 self.sendingThread = threading.Thread(target=self.sending_loop)
                 self.recievingThread.start()
                 self.sendingThread.start()
@@ -607,9 +606,7 @@ class FTP(object):
         if(opcode == 8):
             replyPayload = self.remove_file(data)
 
-        #replying back the next sequence number
-        v = int.from_bytes(payload[:2], byteorder='little', signed=False)
-        payload[0] = (v&0xFF); payload[1] = (v>>8);
+        #replying the same sequence number back
         replyPayload[0]=payload[0]
         replyPayload[1]=payload[1]
 
