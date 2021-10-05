@@ -97,12 +97,12 @@ class GA3ACompanionComputer(CompanionComputer):
                                            self.agriPayload.flowSensor.get_calib_factor_multiplier, 
                                            0.5, 
                                            1.5]
-        i = i+1                  
-        self.paramDict["PIB_ENABLED"] = [i,
-                                         self.agriPayload.pibStatus.set_pib_enabled, 
-                                         self.agriPayload.pibStatus.get_pib_enabled, 
-                                         0, 
-                                         1]
+        # i = i+1
+        # self.paramDict["PIB_ENABLED"] = [i,
+        #                                  self.agriPayload.pibStatus.set_pib_enabled,
+        #                                  self.agriPayload.pibStatus.get_pib_enabled,
+        #                                  0,
+        #                                  1]
         
         self.numParams = len(self.paramDict.keys())
         
@@ -111,8 +111,16 @@ class GA3ACompanionComputer(CompanionComputer):
         
     def init(self):
         super().init()
-        
-        self.agriPayload.pibStatus.init()
+
+        #This has to be called first in this update function
+        self.agriPayload.init()
+
+        if self.agriPayload.nozzType is 0: #micromiser_with_dcu
+            # Schedule the payload sensors readings
+            self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
+
+        self.scheduledTaskList.append(ScheduleTask(0.2, self.agriPayload.flowSensor.calc_flow_rate))
+
 
         # set data stream rate
         self.set_data_stream()
@@ -123,11 +131,7 @@ class GA3ACompanionComputer(CompanionComputer):
 
         # Start Agri Loop
         self.scheduledTaskList.append(ScheduleTask(0.2, self.update))
-        
-        # Schedule the payload sensors readings
-        self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
-            
-        self.scheduledTaskList.append(ScheduleTask(0.2, self.agriPayload.flowSensor.calc_flow_rate))
+
 
         while True:
             time.sleep(1)

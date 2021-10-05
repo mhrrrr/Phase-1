@@ -12,7 +12,8 @@ import struct
 import serial
 import copy
 import logging
-from util.gacommonutil import CountDown
+from util.gacommonutil import CountDown, ScheduleTask
+
 
 class AgriPayload:
     def __init__(self, isSITL):  
@@ -46,8 +47,9 @@ class AgriPayload:
         self.nozzNum = 4                    # number of nozzles
         self.nozzMaxFlowRate = 0.7          # in ltr/min
         self.nozzMinFlowRate = 0.1          # in ltr/min
-        self.nozzType = 'Micromiser'
+        self.nozzType = 0                   # 0->micromiser_with_dcu, 1->micromiser_without_dcu, 2->chinese
         self.nozzP = 0.01
+        self.nozzNoDripPWM = 1500
         
         # Counter to send the speed to autopilot
         self.maxSpeedSetPoint = 5                   # m/s
@@ -89,7 +91,41 @@ class AgriPayload:
         
         # Resume Function
         self.resumeRequestedSpray = False
-        
+
+    def init(self):
+        # read nozzle param and this has to be called first in this update function
+        self.load_nozz_params_from_file()
+
+        if self.nozzType is 0:
+            self.pibStatus.pibEnabled = True
+            self.pibStatus.init()
+
+    def load_nozz_params_from_file(self):
+        with open('agri_nozz_param', 'r') as f:
+            for line in f:
+                # Ignore empty lines
+                if len(line) > 0:
+
+                    # Split the line
+                    splittedLine = line.split(",")
+
+                    # If only 2 fields are then only accept for reading
+                    if len(splittedLine) == 2:
+
+                        # Remove empty spaces if the are
+                        key = splittedLine[0].strip()
+                        value = float(splittedLine[1].strip())
+
+                        if key == 'NOZZ_TYPE':
+                            self.nozzType = int(value)
+                        if key == 'NOZZ_MIN_PWM':
+                            self.nozzMinPWM = int(value)
+                        if key == 'NOZZ_MAX_PWM':
+                            self.nozzMaxPWM = int(value)
+                        if key == 'NOZZ_NODRIP_PWM':
+                            self.nozzNoDripPWM = int(value)
+
+
     # Parameter Getter and Setter
     def set_remaining_payload(self, value):
         self.remainingPayload = value
@@ -131,6 +167,7 @@ class AgriPayload:
         self.time = currTime
         
     def update(self, speed, startWP, endWP, currentWP, flightMode):
+        print('pibenabled = ',self.pibStatus.pibEnabled)
         # update timer
         self.update_time()
         
@@ -196,7 +233,7 @@ class AgriPayload:
             else:     
                 if self.dripStopCountDown.started:
                     if not self.dripStopCountDown.finished:
-                        self.nozzPWM = 1500
+                        self.nozzPWM = self.nozzNoDripPWM
                     else:
                         self.dripStopCountDown.reset()
                 else:
@@ -261,7 +298,7 @@ class AgriPayload:
         
     def calc_nozz_pwm(self, actualRPM):
         
-        if self.nozzType == 'Micromiser':
+        if self.nozzType is 0: #micromiser_with_dcu
             # self.nozzPWM = int(self.nozzMaxPWM - 500*float(self.nozzMaxFlowRate - self.reqFlowRate/4)/float(self.nozzMaxFlowRate - self.nozzMinFlowRate))
             
             # Calculate Target RPM
@@ -324,7 +361,17 @@ class AgriPayload:
                 self.nozzPWM = self.nozzMaxPWM
             if self.nozzPWM < self.nozzMinPWM:
                 self.nozzPWM = self.nozzMinPWM
-    
+
+        if self.nozzType is 1: #micromiser_without_dcu
+            self.nozzPWM = self.nozzMaxPWM
+
+        if self.nozzType is 2: #aadyah
+            self.nozzPWM = self.nozzMaxPWM
+
+        if self.nozzType is 3: #chinese
+            self.nozzPWM = self.nozzMaxPWM
+
+
     def update_pwm(self):
         # Redundant check to prevent unrealistic value to go to the FCS
         if self.nozzPWM > self.nozzMaxPWM:
@@ -338,13 +385,7 @@ class AgriPayload:
 
         if not self.isSITL:
             self.pi.hardware_PWM(self.pumpPin, 50, 50*self.pumpPWM)
-            if not self.pibStatus.pibEnabled:
-                if self.nozzPWM > self.nozzMinPWM:
-                    self.pi.write(self.nozzPin, 1)
-                else:
-                    self.pi.write(self.nozzPin, 0)
-            else:
-                self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
+            self.pi.hardware_PWM(self.nozzPin, 50, 50*self.nozzPWM)
         
 ###############################################################################
         
@@ -397,7 +438,7 @@ class PIBStatus:
         self.nozzleConfiguration = 0b00111100
         
         # Initialize
-        self.pibEnabled = True
+        self.pibEnabled = False
         
     def init(self):
         if not self.pibEnabled:
