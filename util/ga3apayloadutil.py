@@ -167,7 +167,6 @@ class AgriPayload:
         self.time = currTime
         
     def update(self, speed, startWP, endWP, currentWP, flightMode):
-        print('pibenabled = ',self.pibStatus.pibEnabled)
         # update timer
         self.update_time()
         
