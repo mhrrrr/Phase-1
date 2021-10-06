@@ -92,39 +92,6 @@ class AgriPayload:
         # Resume Function
         self.resumeRequestedSpray = False
 
-    def init(self):
-        # read nozzle param and this has to be called first in this update function
-        self.load_nozz_params_from_file()
-
-        if self.nozzType is 0:
-            self.pibStatus.pibEnabled = True
-            self.pibStatus.init()
-
-    def load_nozz_params_from_file(self):
-        with open('agri_nozz_param', 'r') as f:
-            for line in f:
-                # Ignore empty lines
-                if len(line) > 0:
-
-                    # Split the line
-                    splittedLine = line.split(",")
-
-                    # If only 2 fields are then only accept for reading
-                    if len(splittedLine) == 2:
-
-                        # Remove empty spaces if the are
-                        key = splittedLine[0].strip()
-                        value = float(splittedLine[1].strip())
-
-                        if key == 'NOZZ_TYPE':
-                            self.nozzType = int(value)
-                        if key == 'NOZZ_MIN_PWM':
-                            self.nozzMinPWM = int(value)
-                        if key == 'NOZZ_MAX_PWM':
-                            self.nozzMaxPWM = int(value)
-                        if key == 'NOZZ_NODRIP_PWM':
-                            self.nozzNoDripPWM = int(value)
-
 
     # Parameter Getter and Setter
     def set_remaining_payload(self, value):
@@ -156,6 +123,30 @@ class AgriPayload:
         
     def get_particle_size(self):
         return self.targetPS
+
+    def set_nozz_type(self, value):
+        self.nozzType = int(value)
+
+    def get_nozz_type(self):
+        return self.nozzType
+
+    def set_nozz_min_pwm(self, value):
+        self.nozzMinPWM = int(value)
+
+    def get_nozz_min_pwm(self):
+        return self.nozzMinPWM
+
+    def set_nozz_max_pwm(self, value):
+        self.nozzMaxPWM = int(value)
+
+    def get_nozz_max_pwm(self):
+        return self.nozzMaxPWM
+
+    def set_nozz_nodrip_pwm(self, value):
+        self.nozzNoDripPWM = int(value)
+
+    def get_nozz_nodrip_pwm(self):
+        return self.nozzNoDripPWM
         
     def update_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:

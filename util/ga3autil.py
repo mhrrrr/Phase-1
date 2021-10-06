@@ -103,7 +103,37 @@ class GA3ACompanionComputer(CompanionComputer):
         #                                  self.agriPayload.pibStatus.get_pib_enabled,
         #                                  0,
         #                                  1]
-        
+
+        i = i+1
+        self.paramDict["NOZZ_TYPE"] = [i,
+                                           self.agriPayload.set_nozz_type,
+                                           self.agriPayload.get_nozz_type,
+                                           0,
+                                           10]
+
+        i = i+1
+        self.paramDict["NOZZ_MIN_PWM"] = [i,
+                                           self.agriPayload.set_nozz_min_pwm,
+                                           self.agriPayload.get_nozz_min_pwm,
+                                           0,
+                                           2000]
+
+        i = i+1
+        self.paramDict["NOZZ_MAX_PWM"] = [i,
+                                           self.agriPayload.set_nozz_max_pwm,
+                                           self.agriPayload.get_nozz_max_pwm,
+                                           1000,
+                                           20000]
+
+        i = i+1
+        self.paramDict["NOZZ_NODRIP_PWM"] = [i,
+                                           self.agriPayload.set_nozz_nodrip_pwm,
+                                           self.agriPayload.get_nozz_nodrip_pwm,
+                                           0,
+                                           20000]
+
+
+
         self.numParams = len(self.paramDict.keys())
         
         # Read parameter file
@@ -112,10 +142,9 @@ class GA3ACompanionComputer(CompanionComputer):
     def init(self):
         super().init()
 
-        #This has to be called first in this update function
-        self.agriPayload.init()
-
         if self.agriPayload.nozzType is 0: #micromiser_with_dcu
+            self.agriPayload.pibStatus.pibEnabled = True
+            self.agriPayload.pibStatus.init()
             # Schedule the payload sensors readings
             self.scheduledTaskList.append(ScheduleTask(0.15, self.agriPayload.pibStatus.update))
 

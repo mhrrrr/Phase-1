@@ -24,7 +24,8 @@ from sys import platform
 class CompanionComputer(object):
     def __init__(self, sitlType, sitlport):
         # Version Control
-        self.version = "v01.09"
+        self.version = "v01.10"
+        self.sendVersionInfo = False
 
         # Threading Lock
         self.lock = threading.Lock()
@@ -122,6 +123,12 @@ class CompanionComputer(object):
             # Update Mode
             self.currentMode = self.mavlinkInterface.mavConnection.flightmode
             logging.info("FlightMode, " + self.currentMode)
+            if recievedMsg.autopilot == 8 and not self.sendVersionInfo: #GCS
+                for i in range(2):
+                    self.add_new_message_to_sending_queue(
+                        mavutil.mavlink.MAVLink_statustext_message(mavutil.mavlink.MAV_SEVERITY_CRITICAL,
+                                                                   ("cc "+self.version).encode()))
+                    self.sendVersionInfo = True
 
             # Handle Message
             if recievedMsg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_ARDUPILOTMEGA:
