@@ -45,7 +45,7 @@ class AgriPayload:
         self.targetPS = 120                 # Particle Size in micrometer
         self.nozzPWM = 0                    # Current PWM of Nozzle
         self.nozzNum = 4                    # number of nozzles
-        self.nozzMaxFlowRate = 0.7          # in ltr/min
+        self.nozzMaxFlowRate = 4            # in ltr/min
         self.nozzMinFlowRate = 0.1          # in ltr/min
         self.nozzType = 0                   # 0->micromiser_with_dcu, 1->micromiser_without_dcu, 2->chinese
         self.nozzP = 0.01
@@ -147,7 +147,13 @@ class AgriPayload:
 
     def get_nozz_nodrip_pwm(self):
         return self.nozzNoDripPWM
-        
+
+    def set_nozz_count(self, value):
+        self.nozzNum = int(value)
+
+    def get_nozz_count(self):
+        return self.nozzNum
+
     def update_remaining_payload(self, actualFlowRate):
         if self.remainingPayload > 0:
             self.remainingPayload = self.remainingPayload - self.dt * (actualFlowRate/60.)
@@ -297,6 +303,7 @@ class AgriPayload:
                 nozzFlow = self.nozzMinFlowRate
             if nozzFlow > self.nozzMaxFlowRate:
                 nozzFlow = self.nozzMaxFlowRate
+            logging.info("Nozz flowrate, %f" % (nozzFlow))
             
             # curve fit equation RPM = A * (PS - C) ^ B from Micromiser 10 Datasheet
             equationCoeefsA = 257965*np.exp(nozzFlow * -3.519)
@@ -315,27 +322,31 @@ class AgriPayload:
             # If not possible only go for max possible RPM
             if (self.targetPS - equationCoeefsC) > 1:
                 nozzTargetRPM = equationCoeefsA * (self.targetPS - equationCoeefsC)**equationCoeefsB
+                logging.info("Nozz PS, %f, %s, %f" % (self.targetPS, 'possible' ,nozzTargetRPM))
             else:
                 nozzTargetRPM = maxPossibleRPM
-            
+                logging.info("Nozz PS, %f, %s, %f" % (self.targetPS, 'not_possible' ,nozzTargetRPM))
+
             # If Target Nozzle RPM is more than max possible RPM
             # Then limit the target RPM to max possible RPM
             if nozzTargetRPM > maxPossibleRPM:
                 nozzTargetRPM = maxPossibleRPM
+                logging.info("Nozz RPM, %f, %s" % (nozzTargetRPM, 'exceeded_max'))
             
             # rpm = m*voltage + c
             m = -373.91 * nozzFlow + 599.77
             c = -197.78 * nozzFlow - 129.68
             
             voltage = (nozzTargetRPM-c)/m
-            
+            if not 6<=voltage<=24:
+                logging.info("Nozz voltage req, %f, %s" % (voltage, 'out_of_bound'))
+            else:
+                logging.info("Nozz voltage req, %f" % (voltage))
             if voltage < 6:
                 voltage = 6
             if voltage > 24:
                 voltage = 24
-            
-            logging.info("Nozz PID, %f, %f"%(nozzTargetRPM, voltage))
-            
+
             self.nozzPWM = int(1000 + voltage/24*1000)
                 
             # # handle garbage value
@@ -352,6 +363,7 @@ class AgriPayload:
             if self.nozzPWM < self.nozzMinPWM:
                 self.nozzPWM = self.nozzMinPWM
 
+
         if self.nozzType is 1: #micromiser_without_dcu
             self.nozzPWM = self.nozzMaxPWM
 
@@ -360,6 +372,8 @@ class AgriPayload:
 
         if self.nozzType is 3: #chinese
             self.nozzPWM = self.nozzMaxPWM
+
+        logging.info("Nozz pwm, %f"%(self.nozzPWM ))
 
 
     def update_pwm(self):

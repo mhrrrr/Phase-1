@@ -90,7 +90,7 @@ class GA3ACompanionComputer(CompanionComputer):
                                           self.agriPayload.set_particle_size, 
                                           self.agriPayload.get_particle_size, 
                                           50, 
-                                          250]
+                                          600]
         i = i+1                  
         self.paramDict["FLO_SEN_CAL_M"] = [i,
                                            self.agriPayload.flowSensor.set_calib_factor_multiplier, 
@@ -131,7 +131,12 @@ class GA3ACompanionComputer(CompanionComputer):
                                            self.agriPayload.get_nozz_nodrip_pwm,
                                            0,
                                            20000]
-
+        i = i+1
+        self.paramDict["NOZZ_COUNT"] = [i,
+                                           self.agriPayload.set_nozz_count,
+                                           self.agriPayload.get_nozz_count,
+                                           1,
+                                           6]
 
 
         self.numParams = len(self.paramDict.keys())
