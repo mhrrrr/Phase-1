@@ -13,6 +13,15 @@ import threading
 import logging
 
 
+# # # Another module
+import math
+import numpy as np
+import util.VectorMath as vmath
+import util.SAADriver as driver
+import util.SAADataHandling as estimation
+import matplotlib.pyplot as plt #yes
+
+
 class TestCompanionComputer(CompanionComputer):
     def __init__(self, sitlType, sitlPort):
         # Initialize super class
@@ -25,6 +34,9 @@ class TestCompanionComputer(CompanionComputer):
     def init(self):
         super().init()
         
+        lidar = driver.SensorDriver('SITL')
+        lidar.connect_and_fetch()
+        
         # set data stream rate
         self.set_data_stream()
         
@@ -33,10 +45,12 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
 
-        self.scheduledTaskList.append(ScheduleTask(0.1, self.test))
+        #self.scheduledTaskList.append(ScheduleTask(0.1, lidar.update))
         
         while True:
-            time.sleep(1)
+            data = lidar.update()
+            print(data)
+            #time.sleep(1)
 
     def test(self):
         print('yo')

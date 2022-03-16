@@ -1,3 +1,15 @@
+"""
+@author: Dhruv Parikh
+@organisation: General Aeronautics Pvt. Ltd.
+"""
+
+"""
+@Description:
+    Sensor driver for lidar
+    @Todo: Add UART driver support
+           Add CAN driver support
+"""
+
 import socket
 
 class SensorDriver():
@@ -21,10 +33,12 @@ class SensorDriver():
     def update(self):
         lid = []
         data = None
-        data = self.s.recv(4).decode("utf-8") 
-        #If we recieve a new packet of data
-        if data == 'new ':
-            return lid            
-        else:   
-            lid.append(float(data))    
+        while len(lid)<=64:
+            data = self.s.recv(4).decode("utf-8") 
+            #If we recieve a new packet of data
+            if data == 'new ':
+                if len(lid) ==64:
+                    return lid            
+            elif data != None:   
+                lid.append(float(data))    
 

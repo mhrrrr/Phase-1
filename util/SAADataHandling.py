@@ -15,7 +15,7 @@
 
 import math
 import numpy as np
-import VectorMath as vmath
+import util.VectorMath as vmath
 
 
 class Sensor():
