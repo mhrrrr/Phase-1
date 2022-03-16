@@ -8,14 +8,15 @@ Created on Wed Jul  8 14:07:56 2020
 
 # import necessary modules
 import time
-from util.gacommonutil import CompanionComputer, mavutil
+from util.gacommonutil import CompanionComputer, mavutil, ScheduleTask
 import threading
 import logging
 
+
 class TestCompanionComputer(CompanionComputer):
-    def __init__(self, sitlType):
+    def __init__(self, sitlType, sitlPort):
         # Initialize super class
-        super().__init__(sitlType)
+        super().__init__(sitlType, sitlPort)
         
         # Threading Lock for TestCompanionComputer Class
         self.lock = threading.Lock()
@@ -30,9 +31,15 @@ class TestCompanionComputer(CompanionComputer):
         # start our recieving message handling loop
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
+
+
+        self.scheduledTaskList.append(ScheduleTask(0.1, self.test))
         
         while True:
             time.sleep(1)
+
+    def test(self):
+        print('yo')
             
     def set_data_stream(self):
         # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
