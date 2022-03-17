@@ -27,7 +27,7 @@ parser.add_argument("--vehicle",help="Vehicle Name", type=str, dest="vehicle")
 parser.add_argument("--sitludp", action="store_true", dest="sitludp")
 parser.add_argument("--sitltcp", action="store_true", dest="sitltcp")
 parser.add_argument("--sitlcom", action="store_true", dest="sitlcom")
-parser.add_argument("--log", help="Logging Level", type=str, dest="logLevel", default="INFO")
+parser.add_argument("--log", help="Logging Level", type=str, dest="logLevel", default="WARN")
 parser.add_argument("--fileLog", action="store_true", dest="fileLogEnabled")
 parser.add_argument("--tcpport", type=int, required=False, default=5760,
     help="defines the tcp port at which mavlink is connected")
@@ -93,6 +93,6 @@ try:
     companionComp.init()
 
 # During debugging so that we can exit the loop
-except:
-#    logging.exception(e)
+except Exception as e:
+    logging.exception(e)
     companionComp.kill_all_threads()

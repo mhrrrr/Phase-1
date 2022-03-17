@@ -17,7 +17,7 @@ class SensorDriver():
         if drivertype == 'SITL':
             self.HOST, self.PORT = "localhost", 8080
 
-
+            self.raw_data = [0]*10
             self.lid = []
 
         else:
@@ -31,14 +31,18 @@ class SensorDriver():
             print("Bridge initialised")
     
     def update(self):
+        #0.1259 seconds highest - sometimes
+        #0.00025 seconds lowest 
+        #0. 15 seconds 
         lid = []
         data = None
         while len(lid)<=64:
             data = self.s.recv(4).decode("utf-8") 
             #If we recieve a new packet of data
             if data == 'new ':
-                if len(lid) ==64:
-                    return lid            
+                if len(lid) == 64:
+                    self.raw_data = lid
+                    lid = []            
             elif data != None:   
-                lid.append(float(data))    
+                lid.append(float(data))
 

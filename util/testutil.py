@@ -8,6 +8,7 @@ Created on Wed Jul  8 14:07:56 2020
 
 # import necessary modules
 import time
+from unittest import FunctionTestCase
 from util.gacommonutil import CompanionComputer, mavutil, ScheduleTask
 import threading
 import logging
@@ -19,6 +20,7 @@ import numpy as np
 import util.VectorMath as vmath
 import util.SAADriver as driver
 import util.SAADataHandling as estimation
+import util.SAAController as control
 import matplotlib.pyplot as plt #yes
 
 
@@ -30,13 +32,23 @@ class TestCompanionComputer(CompanionComputer):
         # Threading Lock for TestCompanionComputer Class
         self.lock = threading.Lock()
         self.handleRecievedMsgThread = None
+
+        self.lidar = driver.SensorDriver('SITL')
+        self.lidar.connect_and_fetch()
+        
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        self.coordinate_transform = estimation.DataPreProcessor()
+
+        self.navigation_controller = control.ObstacleAvoidance()
+
+        
+
         
     def init(self):
         super().init()
         
-        lidar = driver.SensorDriver('SITL')
-        lidar.connect_and_fetch()
-        
+
+
         # set data stream rate
         self.set_data_stream()
         
@@ -44,17 +56,50 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
+        self.scheduledTaskList.append(ScheduleTask(0.12, self.lidar.update))
+        self.scheduledTaskList.append(ScheduleTask(0.1, self.update_vars))
+        
+        self.scheduledTaskList.append(ScheduleTask(0.12,self.front_sensor.handle_raw_data))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.update_vehicle_states))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.convert_body_to_inertial_frame))
 
-        #self.scheduledTaskList.append(ScheduleTask(0.1, lidar.update))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
+        self.scheduledTaskList.append(ScheduleTask(0.1, self.navigation_controller.basic_stop))
+        self.scheduledTaskList.append(ScheduleTask(0.1, self.handbrake))
+        
+
+        # self.scheduledTaskList.append(ScheduleTask(0.1, self.debug))
         
         while True:
-            data = lidar.update()
-            print(data)
-            #time.sleep(1)
+            time.sleep(1)
+    def handbrake(self):
+        if self.brake:
+            self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
+                                                                                           mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                                                                                           17))    
 
-    def test(self):
-        print('yo')
-            
+    def debug(self):
+        print(self.coordinate_transform.obstacle_vector_inertial)
+
+
+    def update_vars(self):
+        #6.198883056640625e-06 seconds
+        self.front_sensor.data = self.lidar.raw_data
+        self.coordinate_transform.roll = self.roll
+        self.coordinate_transform.pitch = self.pitch
+        self.coordinate_transform.yaw = self.yaw
+        self.coordinate_transform.px = self.px
+        self.coordinate_transform.py = self.py
+        self.coordinate_transform.pz = self.relativeAlt
+        self.coordinate_transform.x = self.front_sensor.X
+        self.coordinate_transform.y = self.front_sensor.Y
+        self.navigation_controller.obstacle_map = self.coordinate_transform.obstacle_vector_inertial.T
+        self.navigation_controller.px = self.px
+        self.navigation_controller.py = self.py
+        self.navigation_controller.vx = self.vx
+        self.navigation_controller.vy = self.vy
+        self.brake = self.navigation_controller.brake
+         
     def set_data_stream(self):
         # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec
         # don't change that as it affects other vehicles as well

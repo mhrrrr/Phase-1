@@ -157,6 +157,10 @@ class CompanionComputer(object):
             self.hdop = recievedMsg.eph/100.
             return
 
+        if recievedMsg.get_type() == "LOCAL_POSITION_NED":
+            self.px = round(recievedMsg.x,2)
+            self.py = -round(recievedMsg.y,2)
+            
         if recievedMsg.get_type() == "GLOBAL_POSITION_INT":
             self.vx = 0.01*recievedMsg.vx
             self.vy = 0.01*recievedMsg.vy
