@@ -94,22 +94,25 @@ class TestCompanionComputer(CompanionComputer):
 
     def update_vars(self):
         #6.198883056640625e-06 seconds
-        self.front_sensor.data = self.lidar.raw_data
         self.coordinate_transform.roll = self.roll
         self.coordinate_transform.pitch = self.pitch
         self.coordinate_transform.yaw = self.yaw
         self.coordinate_transform.px = self.px
         self.coordinate_transform.py = self.py
         self.coordinate_transform.pz = self.relativeAlt
-        self.coordinate_transform.x = self.front_sensor.X
-        self.coordinate_transform.y = self.front_sensor.Y
-        self.navigation_controller.obstacle_map = self.coordinate_transform.obstacle_vector_inertial.T
         self.navigation_controller.px = self.px
         self.navigation_controller.py = self.py
         self.navigation_controller.vx = self.vx
         self.navigation_controller.vy = self.vy
         self.brake = self.navigation_controller.brake
-        # print(self.coordinate_transform.obstacle_vector_inertial)
+
+        #Lock the threads when overwriting mapping variables
+        # with self.lock:
+        self.front_sensor.data = self.lidar.raw_data
+        self.navigation_controller.obstacle_map = self.coordinate_transform.obstacle_vector_inertial.T
+        self.coordinate_transform.x = self.front_sensor.X
+        self.coordinate_transform.y = self.front_sensor.Y
+
          
     def set_data_stream(self):
         # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec

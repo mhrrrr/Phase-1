@@ -38,12 +38,9 @@ class Sensor():
         self.init_angle = init_angle
 
         self.init_index = round(init_angle/delta_angle)
-        print(self.init_index)
-        print(self.init_angle*180/3.14)
 
         self.master_array_length = round(2*math.pi/delta_angle)
 
-        print(self.master_array_length)
 
         self.X = np.ones([self.master_array_length])*self.max_range
         self.Y = np.ones([self.master_array_length])*self.max_range
@@ -77,8 +74,6 @@ class Sensor():
                         self.X[i + self.init_index] = float(data[i]*math.cos(self.delta_angle*i + self.init_angle))
                         self.Y[i + self.init_index] = float(data[i]*math.sin(self.delta_angle*i + self.init_angle))
 
-                        print("Obstacle detected")
-                        print(time.time())
 
     def combine_multiple_readings(self,x2,y2):
         for i in range(self.master_array_length):
@@ -109,6 +104,7 @@ class DataPreProcessor():
         
         #Initialise the body to inertial matrix as 3x3 identity
         self.b2i_matrix = np.eye(3)
+        self.obstacle_vector_inertial = np.zeros([2,2])
 
 
     def update_vehicle_states(self):
