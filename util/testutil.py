@@ -21,7 +21,6 @@ import util.VectorMath as vmath
 import util.SAADriver as driver
 import util.SAADataHandling as estimation
 import util.SAAController as control
-import matplotlib.pyplot as plt #yes
 
 
 class TestCompanionComputer(CompanionComputer):
@@ -33,13 +32,24 @@ class TestCompanionComputer(CompanionComputer):
         self.lock = threading.Lock()
         self.handleRecievedMsgThread = None
 
+        #Initialise SITL driver
         self.lidar = driver.SensorDriver('SITL')
+
+        #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
         
-        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        #Front sensor
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
+
+        #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
+        #initialise navigation controller
         self.navigation_controller = control.ObstacleAvoidance()
+
+
+        #Brake
+        self.brake = 0
 
         
 
@@ -56,16 +66,16 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
-        self.scheduledTaskList.append(ScheduleTask(0.12, self.lidar.update))
-        self.scheduledTaskList.append(ScheduleTask(0.1, self.update_vars))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.lidar.update))
+        self.scheduledTaskList.append(ScheduleTask(0.001, self.update_vars))
         
-        self.scheduledTaskList.append(ScheduleTask(0.12,self.front_sensor.handle_raw_data))
+        self.scheduledTaskList.append(ScheduleTask(0.01,self.front_sensor.handle_raw_data))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.update_vehicle_states))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.convert_body_to_inertial_frame))
 
         self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
-        self.scheduledTaskList.append(ScheduleTask(0.1, self.navigation_controller.basic_stop))
-        self.scheduledTaskList.append(ScheduleTask(0.1, self.handbrake))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.handbrake))
         
 
         # self.scheduledTaskList.append(ScheduleTask(0.1, self.debug))
@@ -99,6 +109,7 @@ class TestCompanionComputer(CompanionComputer):
         self.navigation_controller.vx = self.vx
         self.navigation_controller.vy = self.vy
         self.brake = self.navigation_controller.brake
+        # print(self.coordinate_transform.obstacle_vector_inertial)
          
     def set_data_stream(self):
         # data rate of more than 100 Hz is not possible as recieving loop is set to run at interval of 0.01 sec

@@ -1,11 +1,12 @@
 """
 @author: Dhruv Parikh
 @organisation: General Aeronautics Pvt. Ltd.
+@date: 1-03-2022
 """
 
 """
 @Description:
-    Sensor driver for lidar
+    Sensor driver for lidar/radar
     @Todo: Add UART driver support
            Add CAN driver support
 """
@@ -16,7 +17,6 @@ class SensorDriver():
     def __init__(self,drivertype):
         if drivertype == 'SITL':
             self.HOST, self.PORT = "localhost", 8080
-
             self.raw_data = [0]*10
             self.lid = []
 
@@ -34,8 +34,14 @@ class SensorDriver():
         #0.1259 seconds highest - sometimes
         #0.00025 seconds lowest 
         #0. 15 seconds 
+
+        #Empty the array for new fetch
         lid = []
+
+        #empty the data
         data = None
+
+        #Keep fetching until the data is filled with 64 indices
         while len(lid)<=64:
             data = self.s.recv(4).decode("utf-8") 
             #If we recieve a new packet of data

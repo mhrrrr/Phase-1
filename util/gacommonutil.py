@@ -159,7 +159,7 @@ class CompanionComputer(object):
 
         if recievedMsg.get_type() == "LOCAL_POSITION_NED":
             self.px = round(recievedMsg.x,2)
-            self.py = -round(recievedMsg.y,2)
+            self.py = round(recievedMsg.y,2)
             
         if recievedMsg.get_type() == "GLOBAL_POSITION_INT":
             self.vx = 0.01*recievedMsg.vx

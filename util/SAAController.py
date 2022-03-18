@@ -34,8 +34,8 @@ class ObstacleAvoidance(ObstacleHandle):
         self.brake = 0
 
     def predict_pos_vector(self):
-        dt = 1
-        self.pos_vector = [self.vx*dt,-self.vy*dt]
+        dt = 0.5
+        self.pos_vector = [self.vx*dt,self.vy*dt]
 
     def basic_stop(self):
         if self.obstacle_map is None:
@@ -53,6 +53,9 @@ class ObstacleAvoidance(ObstacleHandle):
                 # if self.vec.mag2d(obstacle_vector)<=50:
                         
                 if abs(obstacle_angle)<15:
+                    import time
+                    print("Stopped")
+                    print(time.time())
                     self.brake = 1
                     print(f"Brake {obstacle_angle} ---  {self.pos_vector} --- {obstacle_vector}")
 
