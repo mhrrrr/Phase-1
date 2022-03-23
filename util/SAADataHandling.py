@@ -16,8 +16,9 @@
 import math
 import numpy as np
 import util.VectorMath as vmath
-
+import logging
 import time
+
 class Sensor():
     #This class handles single instance of reading and has no memory
 
@@ -52,9 +53,10 @@ class Sensor():
     def handle_raw_data(self):
         #5.888938903808594e-05 seconds
         data = self.data
+
         #If data is too less
         if len(data)<=10:
-            print("Data not populated in other thread!!")
+            logging.info("Data not populated in other thread!!")
         else:
 
             #Create a bit mask for taking trusty readings of 90% 

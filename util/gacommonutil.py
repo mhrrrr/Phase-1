@@ -62,6 +62,10 @@ class CompanionComputer(object):
         self.vz = 0 # m/s
         self.speed = 0 # m/s
 
+        #Position Estimate in meters
+        self.px = 0 # m
+        self.py = 0 #m
+
         # Attitude
         self.pitch = 0 # rad (-pi to pi)
         self.roll = 0 # rad (-pi to pi)

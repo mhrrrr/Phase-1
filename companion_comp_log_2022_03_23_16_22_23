@@ -1,0 +1,13 @@
+2022-03-23 16:22:57.714,root        ,ERROR   ,Incorrect descriptor starting bytes
+Traceback (most recent call last):
+  File "pymavlink_main.py", line 90, in <module>
+    companionComp = CompanionComp(sitlType, sitlPort)
+  File "/home/dhruv/Desktop/SAA_dev/Instance_Sense_and_Stop/ga_companion_computer/util/testutil.py", line 39, in __init__
+    self.lidar.connect_and_fetch()
+  File "/home/dhruv/Desktop/SAA_dev/Instance_Sense_and_Stop/ga_companion_computer/util/SAADriver.py", line 41, in connect_and_fetch
+    info = self.lidar.get_info()
+  File "/home/dhruv/Desktop/SAA_dev/Instance_Sense_and_Stop/ga_companion_computer/util/RPLidar.py", line 241, in get_info
+    dsize, is_single, dtype = self._read_descriptor()
+  File "/home/dhruv/Desktop/SAA_dev/Instance_Sense_and_Stop/ga_companion_computer/util/RPLidar.py", line 216, in _read_descriptor
+    raise RPLidarException('Incorrect descriptor starting bytes')
+util.RPLidar.RPLidarException: Incorrect descriptor starting bytes

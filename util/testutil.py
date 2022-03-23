@@ -33,31 +33,32 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('SITL')
+        self.lidar = driver.SensorDriver('RPLidar')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
-        
+
         #Front sensor
-        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
+        self.front_sensor = estimation.Sensor(1,1*math.pi/180,3,0.1,0)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance()
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=2)
 
 
         #Brake
         self.brake = 0
+        self.alreadybraked = 0
 
         
 
         
     def init(self):
         super().init()
-        
-
+        t = threading.Thread(target=self.lidar.update_rplidar)
+        t.start()
 
         # set data stream rate
         self.set_data_stream()
@@ -66,34 +67,35 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.lidar.update))
-        self.scheduledTaskList.append(ScheduleTask(0.001, self.update_vars))
+        time.sleep(1)
+        self.scheduledTaskList.append(ScheduleTask(0.06, self.update_vars))
         
-        self.scheduledTaskList.append(ScheduleTask(0.01,self.front_sensor.handle_raw_data))
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.update_vehicle_states))
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.coordinate_transform.convert_body_to_inertial_frame))
+        self.scheduledTaskList.append(ScheduleTask(0.05,self.front_sensor.handle_raw_data))
+        self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.update_vehicle_states))
+        self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.convert_body_to_inertial_frame))
 
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
+        self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.predict_pos_vector))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.handbrake))
-        
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.handbrake))
 
         # self.scheduledTaskList.append(ScheduleTask(0.1, self.debug))
-        
+
         while True:
-            time.sleep(1)
+            time.sleep(0.5)
     def handbrake(self):
-        if self.brake:
+        if self.brake and not self.alreadybraked:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            17))    
+            self.alreadybraked = 1
 
     def debug(self):
-        print(self.coordinate_transform.obstacle_vector_inertial)
+        print(self.coordinate_transform.y)
 
 
     def update_vars(self):
         #6.198883056640625e-06 seconds
+        self.front_sensor.data = self.lidar.raw_data
         self.coordinate_transform.roll = self.roll
         self.coordinate_transform.pitch = self.pitch
         self.coordinate_transform.yaw = self.yaw
@@ -107,11 +109,13 @@ class TestCompanionComputer(CompanionComputer):
         self.brake = self.navigation_controller.brake
 
         #Lock the threads when overwriting mapping variables
-        # with self.lock:
-        self.front_sensor.data = self.lidar.raw_data
+        
         self.navigation_controller.obstacle_map = self.coordinate_transform.obstacle_vector_inertial.T
         self.coordinate_transform.x = self.front_sensor.X
         self.coordinate_transform.y = self.front_sensor.Y
+
+        self.navigation_controller.mode = self.currentMode
+
 
          
     def set_data_stream(self):
