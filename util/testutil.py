@@ -81,10 +81,13 @@ class TestCompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.basic_stop))
         self.scheduledTaskList.append(ScheduleTask(0.02, self.handbrake))
 
+        self.scheduledTaskList.append(ScheduleTask(0.05,self.navigation_stack))
+        self.scheduledTaskList.append(ScheduleTask(0.5,self.navigation_map.forget_far_obstacles))
+
         # self.scheduledTaskList.append(ScheduleTask(0.5, self.debug))
 #        time.sleep(1)
 
-        import matplotlib.pyplot as plt
+
         while True:
             if self.navigation_controller.obstacle_map is None:
                 pass
@@ -120,14 +123,20 @@ class TestCompanionComputer(CompanionComputer):
         self.navigation_controller.vx = self.vx
         self.navigation_controller.vy = self.vy
         self.brake = self.navigation_controller.brake
-
-        #Lock the threads when overwriting mapping variables
-        
-        self.navigation_controller.obstacle_map = self.navigation_map.grid(self.coordinate_transform.obstacle_vector_inertial.T)
         self.coordinate_transform.x = self.front_sensor.X
         self.coordinate_transform.y = self.front_sensor.Y
-
         self.navigation_controller.mode = self.currentMode
+        self.navigation_map.px = self.px
+        self.navigation_map.py = self.py
+        
+
+
+    def navigation_stack(self):
+        #Angular inertial obstacle vector to grid based reading and that is stored in global map
+        self.navigation_map.convert_rel_obstacle_to_inertial(self.navigation_map.grid(self.coordinate_transform.obstacle_vector_inertial.T))
+
+        #Relative obstacle is sent to the navigation algorithm
+        self.navigation_controller.obstacle_map = self.navigation_map.convert_inertial_to_rel()
 
 
          

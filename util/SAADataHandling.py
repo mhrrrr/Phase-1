@@ -141,6 +141,7 @@ class DataPostProcessor():
         self.map_y = [0]
         self.px = 0
         self.py = 0
+        self.map = np.array([[40,40]])
         self.math = vmath.vector()
 
 
@@ -189,6 +190,46 @@ class DataPostProcessor():
             #Add to the map
             map = np.concatenate((map,coordinate_on_map),axis=0)
             #map[sign_x*math.ceil(coordinate_on_map[0]),sign_y*math.floor(coordinate_on_map[1])] = 1
-
         #Return only unique values
         return np.unique(map,axis=0)
+
+    def convert_rel_obstacle_to_inertial(self,points):
+        """
+        
+        """
+        #Converted to inertial frame
+        points = points + np.array([[round(self.px,2),round(self.py,2)]])
+        self.map_maker(points)
+        
+
+    def map_maker(self,points):
+        """
+        You might be wondering why this is a seperate function. But in future there will be a need for a better algorithm such as vortex grid or occupancy grid
+        """
+        
+        self.map = np.unique(np.concatenate((self.map,points),axis=0),axis=0)
+        self.clean_near_obstacles()
+
+    def convert_inertial_to_rel(self):
+        return self.map - np.array([[self.px,self.py]])
+
+    def clean_near_obstacles(self):
+        rel_distance_map = self.convert_inertial_to_rel()
+        indices_to_delete = []
+        for i in range(np.size(rel_distance_map,axis=0)):
+            if self.math.mag2d(rel_distance_map[i,:])<=1:
+                indices_to_delete.append(i)
+            
+        if len(indices_to_delete)>0:
+            self.map = np.delete(self.map, indices_to_delete, axis=0)
+
+    def forget_far_obstacles(self):
+        rel_distance_map = self.convert_inertial_to_rel()
+        indices_to_delete = []
+        for i in range(np.size(rel_distance_map,axis=0)):
+            if self.math.mag2d(rel_distance_map[i,:])>=30:
+                indices_to_delete.append(i)
+            
+        if len(indices_to_delete)>0:
+            self.map = np.delete(self.map, indices_to_delete, axis=0)
+            
