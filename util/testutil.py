@@ -33,19 +33,22 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('RPLidar')
+        self.lidar = driver.SensorDriver('SITL')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
 
         #Front sensor
-        self.front_sensor = estimation.Sensor(1,1*math.pi/180,3,0.1,0)
+        #self.front_sensor = estimation.Sensor(1,1*math.pi/180,3,0.1,0)
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance(max_obs=2)
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=30)
+
+        self.navigation_map = estimation.DataPostProcessor()
 
 
         #Brake
@@ -57,8 +60,8 @@ class TestCompanionComputer(CompanionComputer):
         
     def init(self):
         super().init()
-        t = threading.Thread(target=self.lidar.update_rplidar)
-        t.start()
+        # t = threading.Thread(target=self.lidar.update_sitl_sensor)
+        # t.start()
 
         # set data stream rate
         self.set_data_stream()
@@ -67,7 +70,7 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
-        time.sleep(1)
+        self.scheduledTaskList.append(ScheduleTask(0.06, self.lidar.update_sitl_sensor))
         self.scheduledTaskList.append(ScheduleTask(0.06, self.update_vars))
         
         self.scheduledTaskList.append(ScheduleTask(0.05,self.front_sensor.handle_raw_data))
@@ -75,13 +78,22 @@ class TestCompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.convert_body_to_inertial_frame))
 
         self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.predict_pos_vector))
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
+        self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.basic_stop))
         self.scheduledTaskList.append(ScheduleTask(0.02, self.handbrake))
 
-        # self.scheduledTaskList.append(ScheduleTask(0.1, self.debug))
+        # self.scheduledTaskList.append(ScheduleTask(0.5, self.debug))
+#        time.sleep(1)
 
+        import matplotlib.pyplot as plt
         while True:
-            time.sleep(0.5)
+            if self.navigation_controller.obstacle_map is None:
+                pass
+            else:
+                time.sleep(0.01)
+                #print(self.navigation_controller.obstacle_map[:,1])
+                
+                
+            # time.sleep(0.1)
     def handbrake(self):
         if self.brake and not self.alreadybraked:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
@@ -90,7 +102,8 @@ class TestCompanionComputer(CompanionComputer):
             self.alreadybraked = 1
 
     def debug(self):
-        print(self.coordinate_transform.y)
+        print(self.navigation_controller.obstacle_map )
+        
 
 
     def update_vars(self):
@@ -110,7 +123,7 @@ class TestCompanionComputer(CompanionComputer):
 
         #Lock the threads when overwriting mapping variables
         
-        self.navigation_controller.obstacle_map = self.coordinate_transform.obstacle_vector_inertial.T
+        self.navigation_controller.obstacle_map = self.navigation_map.grid(self.coordinate_transform.obstacle_vector_inertial.T)
         self.coordinate_transform.x = self.front_sensor.X
         self.coordinate_transform.y = self.front_sensor.Y
 

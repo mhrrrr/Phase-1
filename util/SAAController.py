@@ -23,6 +23,8 @@ class ObstacleHandle():
     
     def forget_far_obstacles(self):
         pass
+    
+    
 
 class ObstacleAvoidance(ObstacleHandle):
     def __init__(self,max_obs = 10):
@@ -31,6 +33,7 @@ class ObstacleAvoidance(ObstacleHandle):
         self.vy = 0
         self.px = 0
         self.py = 0
+        self.obstacle_map_2 = None
         self.obstacle_map = None
         self.brake = 0
         self.pos_vector = [0,0]
@@ -38,6 +41,7 @@ class ObstacleAvoidance(ObstacleHandle):
         self.engaging_distance = max_obs
 
         self.mode = "UNKNOWN"
+
 
     def predict_pos_vector(self):
         """
@@ -56,7 +60,6 @@ class ObstacleAvoidance(ObstacleHandle):
             pass
         #Only move forward if obstacle map is defined
         else:
-            #For each obstacle in map
             for i in range(np.size(self.obstacle_map,axis=0)):
                 #Compute vector
                 obstacle_vector = [self.obstacle_map[i,0],self.obstacle_map[i,1]]

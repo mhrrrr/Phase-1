@@ -141,6 +141,7 @@ class DataPostProcessor():
         self.map_y = [0]
         self.px = 0
         self.py = 0
+        self.math = vmath.vector()
 
 
     def cleanup(self):
@@ -152,3 +153,42 @@ class DataPostProcessor():
                 b = np.delete(b, i-k,0)
                 k = k+1
         return b
+    
+    def grid(self,point):
+        """
+        Inefficient grid maker
+
+        Make a map of 40 x 40 meters around drone. Stores each point as a 1x1 square with center point known. 
+        I will only return the obstacles with the center point. 
+
+        The grid points can be stored in map later. 
+        """
+
+        #make a map of 40x40    
+        map = np.array([[40,40]])
+
+        #@TODO: Remove the for loop
+
+        for i in range(len(point)):
+
+            x,y = point[i,0],point[i,1]
+            #Get the signs
+            sign_x = self.math.return_sign(x)
+            sign_y = self.math.return_sign(y)
+            #Remove the signs
+            x = abs(x)
+            y = abs(y)
+            #Edge Case handling
+            if math.floor(x) == math.ceil(x):
+                x = x-0.1
+            if math.floor(y) == math.ceil(y):
+                y = y - 0.1
+
+            #Center of the pixel/grid
+            coordinate_on_map = np.array([[sign_x*(math.floor(x) + math.ceil(x))/2,sign_y*(math.floor(y) + math.ceil(y))/2]])
+            #Add to the map
+            map = np.concatenate((map,coordinate_on_map),axis=0)
+            #map[sign_x*math.ceil(coordinate_on_map[0]),sign_y*math.floor(coordinate_on_map[1])] = 1
+
+        #Return only unique values
+        return np.unique(map,axis=0)

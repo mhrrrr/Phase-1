@@ -173,3 +173,9 @@ class vector():
 
     def mag2d(self,v):
         return math.sqrt(float(v[0]**2 + v[1]**2))
+
+    def return_sign(self,var):
+        if var!=0:
+            return abs(var)/var
+        else:
+            return 1
