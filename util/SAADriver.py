@@ -20,6 +20,8 @@ class SensorDriver():
     def __init__(self,drivertype):
         self.HOST = None
         self.raw_data = [40]*360
+        self.drivername = drivertype
+        
         if drivertype == 'SITL':
             self.HOST, self.PORT = "localhost", 8080
             self.raw_data = [0]*10

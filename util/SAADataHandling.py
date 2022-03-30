@@ -115,6 +115,7 @@ class DataPreProcessor():
         #Calculate trigs and matrices before hand to reduce computational load
         self.transformations.calc_trig_values(self.roll,self.pitch,self.yaw)
         self.b2i_matrix = np.linalg.inv(self.transformations.euler_zyx())
+        #self.b2i_matrix = (self.transformations.euler_zyx())
 
 
 
@@ -131,7 +132,7 @@ class DataPreProcessor():
 
         #Convert from body to inertial frame
         self.obstacle_vector_inertial = np.dot(self.b2i_matrix,obstacle_vector_body)
-
+        
 class DataPostProcessor():
     """
     Handle the entire obstacle information
@@ -209,6 +210,7 @@ class DataPostProcessor():
         
         self.map = np.unique(np.concatenate((self.map,points),axis=0),axis=0)
         self.clean_near_obstacles()
+        # print(self.map)
 
     def convert_inertial_to_rel(self):
         return self.map - np.array([[self.px,self.py]])

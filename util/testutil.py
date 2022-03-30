@@ -40,13 +40,14 @@ class TestCompanionComputer(CompanionComputer):
 
         #Front sensor
         #self.front_sensor = estimation.Sensor(1,1*math.pi/180,3,0.1,0)
-        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
+        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance(max_obs=30)
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=35)
 
         self.navigation_map = estimation.DataPostProcessor()
 
@@ -70,8 +71,8 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
-        self.scheduledTaskList.append(ScheduleTask(0.06, self.lidar.update_sitl_sensor))
-        self.scheduledTaskList.append(ScheduleTask(0.06, self.update_vars))
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.lidar.update_sitl_sensor))
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.update_vars))
         
         self.scheduledTaskList.append(ScheduleTask(0.05,self.front_sensor.handle_raw_data))
         self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.update_vehicle_states))
@@ -98,7 +99,7 @@ class TestCompanionComputer(CompanionComputer):
                 
             # time.sleep(0.1)
     def handbrake(self):
-        if self.brake and not self.alreadybraked:
+        if self.brake and not self.alreadybraked and self.relativeAlt>5:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            17))    
@@ -112,9 +113,14 @@ class TestCompanionComputer(CompanionComputer):
     def update_vars(self):
         #6.198883056640625e-06 seconds
         self.front_sensor.data = self.lidar.raw_data
-        self.coordinate_transform.roll = self.roll
+
+        #
+        if self.lidar.drivername == 'SITL':
+            self.coordinate_transform.roll = self.roll + math.pi
+        else:
+            self.coordinate_transform.roll = self.roll
         self.coordinate_transform.pitch = self.pitch
-        self.coordinate_transform.yaw = self.yaw
+        self.coordinate_transform.yaw = math.atan2(math.sin(self.yaw),math.cos(self.yaw))
         self.coordinate_transform.px = self.px
         self.coordinate_transform.py = self.py
         self.coordinate_transform.pz = self.relativeAlt
@@ -128,7 +134,6 @@ class TestCompanionComputer(CompanionComputer):
         self.navigation_controller.mode = self.currentMode
         self.navigation_map.px = self.px
         self.navigation_map.py = self.py
-        
 
 
     def navigation_stack(self):
@@ -157,7 +162,7 @@ class TestCompanionComputer(CompanionComputer):
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RC_CHANNELS, 2, 1))
         #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_RAW_CONTROLLER, 1, 1))
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_POSITION, 5, 1))
-        #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
+        self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA1, 1, 1))
         #self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA2, 1, 1))
         self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_request_data_stream_message(self.mavlinkInterface.mavConnection.target_system, self.mavlinkInterface.mavConnection.target_component, mavutil.mavlink.MAV_DATA_STREAM_EXTRA3, 2, 1))
     

@@ -179,3 +179,13 @@ class vector():
             return abs(var)/var
         else:
             return 1
+
+    def area_of_triangle(self,p1, p2, p3):
+        """
+        Area of a triangle
+        """
+        x1,y1 = float(p1[0]),float(p1[1])
+        x2,y2 = float(p2[0]),float(p2[1])
+        x3,y3 = float(p3[0]),float(p3[1])
+        return abs((x1 * (y2 - y3) + x2 * (y3 - y1)
+                + x3 * (y1 - y2)) / 2.0)
