@@ -207,10 +207,9 @@ class SensorDriver():
             if data == 'new ':
                 if len(lid) == 64:
                     self.raw_data = lid
-                    lid = []            
-            elif data != None:   
+                    lid = []             
+            elif data != None:
                 lid.append(float(data))
-                
                 
     def send_health_request(self):
         """Sends the health request. It doesn't handle the recieve commands

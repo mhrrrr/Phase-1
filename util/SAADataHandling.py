@@ -127,7 +127,7 @@ class DataPreProcessor():
         y = self.y
         z = np.zeros([len(x)])
         ignore_obstacle_flag = 1
-        if(self.pz)<=1:
+        if(self.pz)<=10:
             ignore_obstacle_flag = 40
         
         #Obstacle vector in the body frame

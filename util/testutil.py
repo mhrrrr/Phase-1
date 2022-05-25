@@ -47,7 +47,7 @@ class TestCompanionComputer(CompanionComputer):
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance(max_obs=40)
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=35)
 
         self.navigation_map = estimation.DataPostProcessor()
 
@@ -85,8 +85,8 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
         #Scheduled the threads
-        self.scheduledTaskList.append(ScheduleTask(0.0006, self.lidar.update_sitl_sensor))
-        self.scheduledTaskList.append(ScheduleTask(0.0001, self.update_vars))
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.lidar.update_sitl_sensor))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.update_vars))
         #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
         #self.give_scan_values()
         # self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
@@ -97,8 +97,8 @@ class TestCompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.handbrake))
-        self.scheduledTaskList.append(ScheduleTask(0.005,self.navigation_stack))
-        self.scheduledTaskList.append(ScheduleTask(0.005,self.navigation_map.forget_far_obstacles))
+        self.scheduledTaskList.append(ScheduleTask(0.05,self.navigation_stack))
+        self.scheduledTaskList.append(ScheduleTask(1,self.navigation_map.forget_far_obstacles))
         # self.scheduledTaskList.append(ScheduleTask(0.05,self.debug))
 
 
