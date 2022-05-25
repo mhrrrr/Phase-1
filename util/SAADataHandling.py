@@ -126,9 +126,12 @@ class DataPreProcessor():
         x = self.x
         y = self.y
         z = np.zeros([len(x)])
+        ignore_obstacle_flag = 1
+        if(self.pz)<=1:
+            ignore_obstacle_flag = 40
         
         #Obstacle vector in the body frame
-        obstacle_vector_body = np.array([x,y,z])
+        obstacle_vector_body = np.array([x,y,z])*ignore_obstacle_flag
 
         #Convert from body to inertial frame
         self.obstacle_vector_inertial = np.dot(self.b2i_matrix,obstacle_vector_body)

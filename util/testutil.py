@@ -33,7 +33,7 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('RPLidar')
+        self.lidar = driver.SensorDriver('SITL')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
@@ -70,10 +70,10 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
         ### Starting reading threads as they are while loops ###
-        t1 = threading.Thread(target=self.lidar.give_scan_values)
-        t1.start()
-        t2 = threading.Thread(target=self.lidar.read_fast)
-        t2.start()
+        # t1 = threading.Thread(target=self.lidar.give_scan_values)
+        # t1.start()
+        # t2 = threading.Thread(target=self.lidar.read_fast)
+        # t2.start()
         
         
         # set data stream rate
@@ -84,10 +84,11 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
         #Scheduled the threads
+        self.scheduledTaskList.append(ScheduleTask(0.06, self.lidar.update_sitl_sensor))
         self.scheduledTaskList.append(ScheduleTask(0.0001, self.update_vars))
         #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
         #self.give_scan_values()
-        self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
+        # self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
         self.scheduledTaskList.append(ScheduleTask(0.0002,self.front_sensor.handle_raw_data))
         self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.update_vehicle_states))
         self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.convert_body_to_inertial_frame))
@@ -152,6 +153,10 @@ class TestCompanionComputer(CompanionComputer):
 
 
     def navigation_stack(self):
+        """Update vars function was getting filled....
+        I am making another thread. 
+        """
+
         #Angular inertial obstacle vector to grid based reading and that is stored in global map
         self.navigation_map.convert_rel_obstacle_to_inertial(self.navigation_map.grid(self.coordinate_transform.obstacle_vector_inertial.T))
 
