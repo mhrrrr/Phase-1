@@ -27,6 +27,11 @@ class ObstacleHandle():
     
 
 class ObstacleAvoidance(ObstacleHandle):
+    """Obstacle Avoidance Library
+
+    Args:
+        ObstacleHandle (Class)
+    """
     def __init__(self,max_obs = 10):
         self.vec = vmath.vector()
         self.vx = 0
@@ -57,15 +62,29 @@ class ObstacleAvoidance(ObstacleHandle):
     
     
     def scale(self,val):
+        """Scaling a 2D vector
+        This is intended for waypoint based filtering of obstacle
+
+        Args:
+            val (float): Scale
+
+        Returns:
+            2x2 matrix: Scaling matrix
+        """
         return np.eye(2)*val
 
     def if_inside_triangle(self,point):
+        """Returns a boolean if the point is inisde the waypoint triangle
+
+        Args:
+            point (_type_): 2D point
+        """
         point += np.array([self.px,self.py])
         a1 = self.vec.area_of_triangle(self.waypoints[0,:],self.waypoints[1,:],point)
         a2 = self.vec.area_of_triangle(self.waypoints[2,:],self.waypoints[1,:],point)
         a3 = self.vec.area_of_triangle(self.waypoints[0,:],self.waypoints[2,:],point)
         A = self.vec.area_of_triangle(self.waypoints[0,:],self.waypoints[2,:],self.waypoints[1,:])
-#        print(f"{A} vs {a1+a2+a3}")
+        #Returning with some tolerance... this needs to calibrated. 
         return abs(A - (a1+a2+a3))<=5
 
     def basic_stop(self):
@@ -82,16 +101,25 @@ class ObstacleAvoidance(ObstacleHandle):
                 #Compute vector
                 obstacle_vector = [self.obstacle_map[i,0],self.obstacle_map[i,1]]
                 #Scale the triangle using transformation matrix - tomorrow
-                if self.if_inside_triangle(obstacle_vector):
+                #Unless we have a mavlink based waypoint functionality, we should compare this to zero
+                if self.if_inside_triangle(obstacle_vector)==0:
                     
                     #If drone is not moving or obstacle is beyond the specified limits -> don't engage 
-                    if(self.vec.mag2d(self.pos_vector)==0 or self.vec.mag2d(obstacle_vector)==0 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
+                    if(self.vec.mag2d(self.pos_vector)<=0.2 or self.vec.mag2d(obstacle_vector)<=0.5 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
                         obstacle_angle = 1000
                     
                     #Compute the angle between the predicted position and obstacle on the field
                     else:
-                        obstacle_angle = round(math.acos(np.dot(self.pos_vector,obstacle_vector)/(self.vec.mag2d(self.pos_vector)*self.vec.mag2d(obstacle_vector)))*180/math.pi,2)
-                        # print(obstacle_angle)
+
+                        #This handling is done for the math domain error. Sometimes the values are outside the 
+                        # Cosine domain. This is mainly because to save resource space, I have done a lot of modification
+                        # in the raw values.
+                        calc = np.dot(self.pos_vector,obstacle_vector)/(self.vec.mag2d(self.pos_vector)*self.vec.mag2d(obstacle_vector))
+                        if(abs(calc)<=1):
+                            obstacle_angle = round(math.acos(calc)*180/math.pi,2)
+                        else:
+                            obstacle_angle = math.acos(abs(calc)/calc)
+                            obstacle_angle = round(math.acos(np.dot(self.pos_vector,obstacle_vector)/(self.vec.mag2d(self.pos_vector)*self.vec.mag2d(obstacle_vector)))*180/math.pi,2)
 
                     #If angle is in range, engage the brakes                        
                     #@TODO: Range specified by params
@@ -99,6 +127,5 @@ class ObstacleAvoidance(ObstacleHandle):
                         self.brake = 1
                         print(f"Brake {obstacle_angle} ---  {self.pos_vector} --- {obstacle_vector}")
                 else:
-                    pass
-                    # print("Ignoring obstacle! Good Luck")
+                    print("Ignoring obstacle! Good Luck")
 

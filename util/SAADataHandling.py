@@ -196,7 +196,7 @@ class DataPostProcessor():
 
     def convert_rel_obstacle_to_inertial(self,points):
         """
-        
+        Converts the vector from relative frame to origin frame
         """
         #Converted to inertial frame
         points = points + np.array([[round(self.px,2),round(self.py,2)]])
@@ -213,9 +213,15 @@ class DataPostProcessor():
         # print(self.map)
 
     def convert_inertial_to_rel(self):
+        """Convert the vector from inertial frame to relative frame
+        """
         return self.map - np.array([[self.px,self.py]])
 
     def clean_near_obstacles(self):
+        """
+        Removes obstacle within 1 meter radius
+        -> Calculated risks are taken here... if drone hasn't stopped for obstacles before 1 meter, then it will probably be noise?
+        """
         rel_distance_map = self.convert_inertial_to_rel()
         indices_to_delete = []
         for i in range(np.size(rel_distance_map,axis=0)):
@@ -226,6 +232,10 @@ class DataPostProcessor():
             self.map = np.delete(self.map, indices_to_delete, axis=0)
 
     def forget_far_obstacles(self):
+        """
+        Delete obstacles that are very far from the drone 
+        We are very short on memory, this keeps the map size within acceptable limits
+        """
         rel_distance_map = self.convert_inertial_to_rel()
         indices_to_delete = []
         for i in range(np.size(rel_distance_map,axis=0)):

@@ -61,8 +61,6 @@ class TestCompanionComputer(CompanionComputer):
         
     def init(self):
         super().init()
-        # t = threading.Thread(target=self.lidar.update_sitl_sensor)
-        # t.start()
 
         # set data stream rate
         self.set_data_stream()
@@ -71,6 +69,7 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
+        ### Starting reading threads as they are while loops ###
         t1 = threading.Thread(target=self.lidar.give_scan_values)
         t1.start()
         t2 = threading.Thread(target=self.lidar.read_fast)
@@ -84,6 +83,7 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
+        #Scheduled the threads
         self.scheduledTaskList.append(ScheduleTask(0.0001, self.update_vars))
         #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
         #self.give_scan_values()
@@ -105,11 +105,9 @@ class TestCompanionComputer(CompanionComputer):
                 pass
             else:
                 time.sleep(0.01)
-                #print(self.navigation_controller.obstacle_map[:,1])
-                
-                
-            # time.sleep(0.1)
+
     def handbrake(self):
+        #Only brake when previously brake command is not given, altitude is greater than 1
         if self.brake and not self.alreadybraked and self.relativeAlt>1:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
@@ -117,20 +115,26 @@ class TestCompanionComputer(CompanionComputer):
             self.alreadybraked = 1
 
     def debug(self):
+        """Debugger if you want to print something
+        """
         print(self.navigation_controller.obstacle_map )
         
 
 
     def update_vars(self):
+        """This function acts as a bridge between different class to transfer data. Part of the requirements for 
+        developing the algorithm
+        """
         #6.198883056640625e-06 seconds
         self.front_sensor.data = self.lidar.raw_data
 
-        #
+        #Gazebo axes are different from my axis, thus I have to handle it. 
         if self.lidar.drivername == 'SITL':
             self.coordinate_transform.roll = self.roll + math.pi
         else:
             self.coordinate_transform.roll = self.roll
         self.coordinate_transform.pitch = self.pitch
+        #Yaw wrapper to keep it compatible with my transformations
         self.coordinate_transform.yaw = math.atan2(math.sin(self.yaw),math.cos(self.yaw))
         self.coordinate_transform.px = self.px
         self.coordinate_transform.py = self.py

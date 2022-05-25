@@ -12,28 +12,33 @@
 """
 
 
-from util.RPLidar import RPLidar
 import math
 import socket
 import math
 import logging
 import threading
-import copy
 import serial
 import time
 import struct
 
 class SensorDriver():
     def __init__(self,drivertype):
+        """Initialiser for Sensor Driver
+
+        Args:
+            drivertype (String): Put in SITL or RPLidar
+        """
         self.HOST = None
         self.raw_data = [40]*360
         self.drivername = drivertype
         
+        #Connect to local host and port. This connects to the C++ bridge
         if drivertype == 'SITL':
             self.HOST, self.PORT = "localhost", 8080
             self.raw_data = [0]*10
             self.lid = []
 
+        #Connect to actual RPLidar. Warning: Pretty unstable code 
         else:
             self.PORT = '/dev/ttyUSB0'
             self.START_FLAG = b"\xA5"
@@ -57,47 +62,71 @@ class SensorDriver():
             
 
     def connect_and_fetch(self):
+        """Connects to the sensor and starts the scan request
+        """
+        #SITl
         if self.HOST != None:
             self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s.connect((self.HOST, self.PORT))
             logging.info("Bridge initialised")
+        
+        #RPLidar
         else:
+            #Connect to the sensor
             self.lidar_connection = serial.Serial(self.PORT,baudrate=115200,parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,timeout=1)
-            # self.send_reset_request()
+            #Sleep for 2 Seconds
             time.sleep(2)
             
+            #Start the motor
             self.set_pwm(866)
+            #Reading all data from the buffer and discarding it
             self.lidar_connection.read_all()
             time.sleep(1)
+            #Send the request to start scanning - by this time, the motor would be at constant rate and hence should output data immediately
             self.start_scan_request()
+            #Read the header of the response packet
             self.read_response()
     
     def read_fast(self):
+        """
+        Read all stack of 4000 bytes from the buffer. 
+        This function has to be called only once - create a seperate thread
+        """
         while True:
             if self.lidar_connection.inWaiting()>300:
                 self.scan_data = self.pass_raw_data(4000)
 
     def give_scan_values(self):
+        """
+        Parse the readings, append the angle and distance from it. 
+        Note that every new scan, the old scan values are discarded. 
+        This is okay for memory based sense and stop as it stores the values anyway.
+        """
         while True:
+            #If there is data populated
             if self.scan_data is not None:
+                #Protect the instant data -> Tip: We need such protectors in every function 
                 data = self.scan_data
+
+                #For each 5 byte packet, parse the readings according to datasheet
                 for i in range(0,len(data),5):
 
                     new_scan, angle, distance = self.parse_scan_readings(data[i:i+5])
+                    #If we get new scan, remove all the previous data and start appending
                     if new_scan:
-                        #print("yay")
                         self.master_angle = []
                         self.master_distance = []
                         self.master_angle.append(angle)
                         self.master_distance.append(distance) 
+                    #This flag is output of the parse_scan_readings when things go wrong. 
                     elif new_scan == -1:
                         print("problem")
-                        pass
+                    
+                    #Keep appending till we get new scan header
                     else:
                         self.master_angle.append(angle)
                         self.master_distance.append(distance)
-                    #self.t2 = time.time()
-                
+                    
     def update_rplidar(self):
         """
         @Description: 
@@ -105,16 +134,14 @@ class SensorDriver():
         If lidar data outputs more than 10 measurements per scan, then we will consider the output
         The data is downsampled to resolution of 1 degree to be fed to the SAADataHandler
         """
-#        self.lidar.reset()
-#        
 
         lid = []
         ang = []
         mag = [40]*360
-        #self.give_scan_values()
 
         
         #Saving the values so they dont get updated
+        #This is an example of the many length based checks I have done to ensure that data is there before me start dividing stuff by zero
         if len(self.master_angle)>2:
             angles = self.master_angle
             distance = self.master_distance
@@ -147,10 +174,6 @@ class SensorDriver():
                 except:
                     print(len(distance),j)
 
-            # for j in range(len(ang)):
-            #     #Assigning the output to the vector based on init angle as 0
-            #     #This will give lidar mag @ each int angle in meters
-            #     mag[int(ang[j])-1] = lid[j]/1000
             #Assign to the global var once the data is populated
             self.raw_data = mag
 
@@ -159,14 +182,17 @@ class SensorDriver():
             self.raw_data = mag
         
     def return_readings(self):
-        
+        """Raw data accessor
+
+        Returns:
+            1D array of length 360
+        """
         return self.raw_data
 
 
     def update_sitl_sensor(self):
-        #0.1259 seconds highest - sometimes
-        #0.00025 seconds lowest 
-        #0. 15 seconds 
+        """This is for Gazebo SITL. It just decodes the sockets 
+        """
 
         #Empty the array for new fetch
         lid = []
@@ -186,9 +212,9 @@ class SensorDriver():
                 lid.append(float(data))
                 
                 
-    
-    #Function Dump
     def send_health_request(self):
+        """Sends the health request. It doesn't handle the recieve commands
+        """
         if self.lidar_connection.is_open:
             buf = self.START_FLAG + self.HEALTH_CMD
             self.lidar_connection.write(buf)
@@ -197,29 +223,45 @@ class SensorDriver():
     def send_getinfo_request(self):
         self.send_cmd(self.GET_INFO)
         self.request = self.INFO
-    def send_reset_request(self):
 
+    def send_reset_request(self):
+        """This function doesnt work that well. Need more tests. Kindly don't use
+        """
         self.send_cmd(self.RESET)
-        # _ = self.lidar_connection.read_all()
-        # self.lidar_connection.flushInput
-        # self.lidar_connection.flushOutput
     
     
     def send_stopscan_request(self):
+        """Stops the scan.
+        """
         self.send_cmd(self.STOP)
     
     def start_scan_request(self):
+        """Starts the scan. 
+        """
         self.lidar_connection.setDTR(True)
         self.send_cmd(self.START_SCAN)
         self.request = self.SCAN
         
     def send_cmd(self,cmd):
+        """Sends the command to the RPLidar. Since each command is send using the start flag, this common function
+        helps.
+
+        Args:
+            cmd (Byte String): Declare the vars in the class variables
+        """
         if self.lidar_connection.is_open:
             buf = self.START_FLAG + cmd
             self.lidar_connection.write(buf)
         
     def read_response(self):
+        """This function reads predefined responses. 
+        @TODO: A better implementation is required.
+
+        Returns:
+            Your byte data
+        """
         if self.lidar_connection.is_open:
+            #Based on request, the amount of bytes to read is defined and headers are checked. 
             if self.request == self.HEALTH:
                 data_len = 3
                 data = self.lidar_connection.read(7)
@@ -233,6 +275,15 @@ class SensorDriver():
             return self.check_data_header(data,data_len)
             
     def check_data_header(self,data,data_len):
+        """This function checks the data header. Without this, no data can be read.
+
+        Args:
+            data (Bytesarray): Bytes array of header
+            data_len (int): Amount of data to read for that specific request
+
+        Returns:
+            bytesarray: Returns the byte array if all checks are passed
+        """
         if len(data) != 7:
             print("Descriptor length mismatch")
             return None
@@ -245,6 +296,9 @@ class SensorDriver():
                 return data
         
     def interprete_data(self,data):
+        """Unused function from initial design
+
+        """
         if len(data) > 0:
             if self.request == self.HEALTH:
                 self.device_health = data[0]
@@ -252,6 +306,12 @@ class SensorDriver():
         print(data)
 
     def _send_payload_cmd(self, cmd: bytes, payload: bytes) -> None:
+        """Sends the payload data (for motor spin). I have taken it from slamtec library.
+
+        Args:
+            cmd (bytes): MOTOR START
+            payload (bytes)
+        """
         size = struct.pack("B", len(payload))
         req = self.START_FLAG + cmd + size + payload
         
@@ -260,11 +320,17 @@ class SensorDriver():
             checksum ^= v
         req += struct.pack("B", checksum)
         self.lidar_connection.write(req)
+        #Indicator that the command is sent
         print('Command sent: %s' % self._showhex(req))
         
         
         
     def set_pwm(self, pwm: int) -> None:
+        """Just call this function to start the motor
+
+        Args:
+            pwm (int): Keep it above 800 pwm
+        """
         self.lidar_connection.setDTR(False)
         payload = struct.pack("<H", pwm)
         yo = b"\xF0"
@@ -277,10 +343,20 @@ class SensorDriver():
     
     
     def get_scan_data(self):
+        """Master function for getting the scan data
+        """
         self.check_data_header()
         self.lidar_connection.read()
         
     def pass_raw_data(self,bytes):
+        """Passes the raw data -> Just a read handler
+
+        Args:
+            bytes (int): Number of bytes
+
+        Returns:
+            bytesarray
+        """
         return self.lidar_connection.read(bytes)
             
 
