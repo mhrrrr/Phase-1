@@ -39,15 +39,15 @@ class TestCompanionComputer(CompanionComputer):
         self.lidar.connect_and_fetch()
 
         #Front sensor
-        self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
+        # self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
         #SITL
-        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance(max_obs=5.5)
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=40)
 
         self.navigation_map = estimation.DataPostProcessor()
 
@@ -55,6 +55,7 @@ class TestCompanionComputer(CompanionComputer):
         #Brake
         self.brake = 0
         self.alreadybraked = 0
+        self.initvar=1
 
         
 
@@ -84,20 +85,21 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
         #Scheduled the threads
-        self.scheduledTaskList.append(ScheduleTask(0.06, self.lidar.update_sitl_sensor))
+        self.scheduledTaskList.append(ScheduleTask(0.0006, self.lidar.update_sitl_sensor))
         self.scheduledTaskList.append(ScheduleTask(0.0001, self.update_vars))
         #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
         #self.give_scan_values()
         # self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
-        self.scheduledTaskList.append(ScheduleTask(0.0002,self.front_sensor.handle_raw_data))
-        self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.update_vehicle_states))
-        self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.convert_body_to_inertial_frame))
+        self.scheduledTaskList.append(ScheduleTask(0.02,self.front_sensor.handle_raw_data))
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.coordinate_transform.update_vehicle_states))
+        self.scheduledTaskList.append(ScheduleTask(0.02, self.coordinate_transform.convert_body_to_inertial_frame))
 
-        self.scheduledTaskList.append(ScheduleTask(0.0001, self.navigation_controller.predict_pos_vector))
-        self.scheduledTaskList.append(ScheduleTask(0.0001, self.navigation_controller.basic_stop))
-        self.scheduledTaskList.append(ScheduleTask(0.0001, self.handbrake))
-        self.scheduledTaskList.append(ScheduleTask(0.00005,self.navigation_stack))
-        self.scheduledTaskList.append(ScheduleTask(0.000005,self.navigation_map.forget_far_obstacles))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
+        self.scheduledTaskList.append(ScheduleTask(0.01, self.handbrake))
+        self.scheduledTaskList.append(ScheduleTask(0.005,self.navigation_stack))
+        self.scheduledTaskList.append(ScheduleTask(0.005,self.navigation_map.forget_far_obstacles))
+        # self.scheduledTaskList.append(ScheduleTask(0.05,self.debug))
 
 
 
@@ -108,6 +110,9 @@ class TestCompanionComputer(CompanionComputer):
                 time.sleep(0.01)
 
     def handbrake(self):
+        if self.initvar==1:
+            print("Handbrake Initialize")
+            self.initvar = 0
         #Only brake when previously brake command is not given, altitude is greater than 1
         if self.brake and not self.alreadybraked and self.relativeAlt>1:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
@@ -118,7 +123,7 @@ class TestCompanionComputer(CompanionComputer):
     def debug(self):
         """Debugger if you want to print something
         """
-        print(self.navigation_controller.obstacle_map )
+        print(f"New:  {self.navigation_controller.obstacle_map}")
         
 
 
@@ -129,7 +134,8 @@ class TestCompanionComputer(CompanionComputer):
         #6.198883056640625e-06 seconds
         self.front_sensor.data = self.lidar.raw_data
 
-        #Gazebo axes are different from my axis, thus I have to handle it. 
+        #Gazebo axes are different from my 
+        # axis, thus I have to handle it. 
         if self.lidar.drivername == 'SITL':
             self.coordinate_transform.roll = self.roll + math.pi
         else:

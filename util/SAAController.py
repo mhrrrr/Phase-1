@@ -97,15 +97,17 @@ class ObstacleAvoidance(ObstacleHandle):
         else:
             # print("Won't ignore this obstacle")
             #Protect the var in for loop
-            for i in range(np.size(self.obstacle_map,axis=0)):
+            self.obstacle_map_copy = self.obstacle_map
+            for i in range(np.size(self.obstacle_map_copy,axis=0)-1):
                 #Compute vector
-                obstacle_vector = [self.obstacle_map[i,0],self.obstacle_map[i,1]]
+                obstacle_vector = [self.obstacle_map_copy[i,0],self.obstacle_map_copy[i,1]]
                 #Scale the triangle using transformation matrix - tomorrow
                 #Unless we have a mavlink based waypoint functionality, we should compare this to zero
-                if self.if_inside_triangle(obstacle_vector)==0:
+                #if self.if_inside_triangle(obstacle_vector)==0:
+                if True:
                     
                     #If drone is not moving or obstacle is beyond the specified limits -> don't engage 
-                    if(self.vec.mag2d(self.pos_vector)<=0.2 or self.vec.mag2d(obstacle_vector)<=0.5 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
+                    if(self.vec.mag2d(self.pos_vector)==0.0 or self.vec.mag2d(obstacle_vector)<=0.5 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
                         obstacle_angle = 1000
                     
                     #Compute the angle between the predicted position and obstacle on the field
@@ -117,10 +119,11 @@ class ObstacleAvoidance(ObstacleHandle):
                         calc = np.dot(self.pos_vector,obstacle_vector)/(self.vec.mag2d(self.pos_vector)*self.vec.mag2d(obstacle_vector))
                         if(abs(calc)<=1):
                             obstacle_angle = round(math.acos(calc)*180/math.pi,2)
+                            print(obstacle_angle)
                         else:
                             obstacle_angle = math.acos(abs(calc)/calc)
                             obstacle_angle = round(math.acos(np.dot(self.pos_vector,obstacle_vector)/(self.vec.mag2d(self.pos_vector)*self.vec.mag2d(obstacle_vector)))*180/math.pi,2)
-
+                            
                     #If angle is in range, engage the brakes                        
                     #@TODO: Range specified by params
                     if abs(obstacle_angle)<5:
