@@ -33,21 +33,21 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('SITL')
+        self.lidar = driver.SensorDriver('RPLidar')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
 
         #Front sensor
-        #self.front_sensor = estimation.Sensor(1,1*math.pi/180,3,0.1,0)
-        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976-math.pi/2)
-        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
+        #SITL
+        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
 
         #initialise navigation controller
-        self.navigation_controller = control.ObstacleAvoidance(max_obs=35)
+        self.navigation_controller = control.ObstacleAvoidance(max_obs=5.5)
 
         self.navigation_map = estimation.DataPostProcessor()
 
@@ -71,22 +71,33 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
         self.handleRecievedMsgThread.start()
 
-        self.scheduledTaskList.append(ScheduleTask(0.02, self.lidar.update_sitl_sensor))
-        self.scheduledTaskList.append(ScheduleTask(0.02, self.update_vars))
+        t1 = threading.Thread(target=self.lidar.give_scan_values)
+        t1.start()
+        t2 = threading.Thread(target=self.lidar.read_fast)
+        t2.start()
         
-        self.scheduledTaskList.append(ScheduleTask(0.05,self.front_sensor.handle_raw_data))
-        self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.update_vehicle_states))
-        self.scheduledTaskList.append(ScheduleTask(0.05, self.coordinate_transform.convert_body_to_inertial_frame))
+        
+        # set data stream rate
+        self.set_data_stream()
+        
+        # start our recieving message handling loop
+        self.handleRecievedMsgThread = threading.Thread(target=self.handle_recieved_message)
+        self.handleRecievedMsgThread.start()
 
-        self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.predict_pos_vector))
-        self.scheduledTaskList.append(ScheduleTask(0.05, self.navigation_controller.basic_stop))
-        self.scheduledTaskList.append(ScheduleTask(0.02, self.handbrake))
+        self.scheduledTaskList.append(ScheduleTask(0.0001, self.update_vars))
+        #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
+        #self.give_scan_values()
+        self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
+        self.scheduledTaskList.append(ScheduleTask(0.0002,self.front_sensor.handle_raw_data))
+        self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.update_vehicle_states))
+        self.scheduledTaskList.append(ScheduleTask(0.0002, self.coordinate_transform.convert_body_to_inertial_frame))
 
-        self.scheduledTaskList.append(ScheduleTask(0.05,self.navigation_stack))
-        self.scheduledTaskList.append(ScheduleTask(0.5,self.navigation_map.forget_far_obstacles))
+        self.scheduledTaskList.append(ScheduleTask(0.0001, self.navigation_controller.predict_pos_vector))
+        self.scheduledTaskList.append(ScheduleTask(0.0001, self.navigation_controller.basic_stop))
+        self.scheduledTaskList.append(ScheduleTask(0.0001, self.handbrake))
+        self.scheduledTaskList.append(ScheduleTask(0.00005,self.navigation_stack))
+        self.scheduledTaskList.append(ScheduleTask(0.000005,self.navigation_map.forget_far_obstacles))
 
-        # self.scheduledTaskList.append(ScheduleTask(0.5, self.debug))
-#        time.sleep(1)
 
 
         while True:
@@ -99,7 +110,7 @@ class TestCompanionComputer(CompanionComputer):
                 
             # time.sleep(0.1)
     def handbrake(self):
-        if self.brake and not self.alreadybraked and self.relativeAlt>5:
+        if self.brake and not self.alreadybraked and self.relativeAlt>1:
             self.add_new_message_to_sending_queue(mavutil.mavlink.MAVLink_set_mode_message(self.mavlinkInterface.mavConnection.target_system,
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            17))    
