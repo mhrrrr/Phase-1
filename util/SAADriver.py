@@ -76,11 +76,25 @@ class SensorDriver():
             self.lidar_connection = serial.Serial(self.PORT,baudrate=115200,parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE,timeout=1)
             #Sleep for 2 Seconds
             time.sleep(2)
+            #Send Stop Scan request
+            self.send_stopscan_request()
+            print("Stopped")
+            #Wait for few ms
+            time.sleep(0.002)
+            #Reset the lidar
+            self.send_reset_request()
+            #Stop the motor
+            self.set_pwm(0)
+
+            time.sleep(2)
+            #Clear the buffer
+            self.clear_input_buffer()            
             
             #Start the motor
             self.set_pwm(866)
-            #Reading all data from the buffer and discarding it
-            self.lidar_connection.read_all()
+
+
+
             time.sleep(1)
             #Send the request to start scanning - by this time, the motor would be at constant rate and hence should output data immediately
             self.start_scan_request()
@@ -96,6 +110,16 @@ class SensorDriver():
             if self.lidar_connection.inWaiting()>300:
                 self.scan_data = self.pass_raw_data(4000)
 
+    def clear_input_buffer(self):
+        """Clears the input buffer multiple times
+        We will make sure that my fragile and non robust driver won't have any problems with the header
+
+        @Warning:
+            Don't Call haphazardly. 
+        """
+        for i in range(1000):
+            self.lidar_connection.reset_input_buffer()
+
     def give_scan_values(self):
         """
         Parse the readings, append the angle and distance from it. 
@@ -103,6 +127,7 @@ class SensorDriver():
         This is okay for memory based sense and stop as it stores the values anyway.
         """
         while True:
+            time.sleep(0.0001)
             #If there is data populated
             if self.scan_data is not None:
                 #Protect the instant data -> Tip: We need such protectors in every function 
@@ -124,8 +149,8 @@ class SensorDriver():
                     
                     #Keep appending till we get new scan header
                     else:
-                        self.master_angle.append(angle)
-                        self.master_distance.append(distance)
+                        self.master_angle.append(float(angle))
+                        self.master_distance.append(float(distance))
                     
     def update_rplidar(self):
         """
@@ -138,18 +163,31 @@ class SensorDriver():
         lid = []
         ang = []
         mag = [40]*360
+        #print(mag)
 
         
         #Saving the values so they dont get updated
         #This is an example of the many length based checks I have done to ensure that data is there before me start dividing stuff by zero
-        if len(self.master_angle)>2:
-            angles = self.master_angle
-            distance = self.master_distance
+
+        master_angles_copy = self.master_angle
+        master_distance_copy = self.master_distance
+        if len(master_angles_copy)>2 and (len(master_distance_copy)==len(master_angles_copy)):
+            angles = master_angles_copy
+            distance = master_angles_copy
         else:
             #Wait for some time to populate a few more readings
-            time.sleep(0.0001)
-            angles = self.master_angle
-            distance = self.master_distance
+            time.sleep(0.001)
+            if((len(self.master_distance)==len(self.master_angle))):
+                angles = self.master_angle
+                distance = self.master_distance
+            else:
+                master_angles_copy = self.master_angle
+                master_distance_copy = self.master_distance
+
+                min_len = min(len(master_distance_copy),len(master_angles_copy))
+                print(min_len)
+                angles = master_angles_copy[0:min_len-1]
+                distance = master_distance_copy[0:min_len-1]
         
         
         #Reset the vars
@@ -172,7 +210,7 @@ class SensorDriver():
                 try:
                     mag[ang] = float(distance[j])/1000
                 except:
-                    print(len(distance),j)
+                    print(len(angles),j,no_of_scans)
 
             #Assign to the global var once the data is populated
             self.raw_data = mag
@@ -226,12 +264,14 @@ class SensorDriver():
     def send_reset_request(self):
         """This function doesnt work that well. Need more tests. Kindly don't use
         """
+        self.lidar_connection.setDTR(True)
         self.send_cmd(self.RESET)
     
     
     def send_stopscan_request(self):
         """Stops the scan.
         """
+        self.lidar_connection.setDTR(True)
         self.send_cmd(self.STOP)
     
     def start_scan_request(self):
@@ -398,4 +438,3 @@ class SensorDriver():
             angle = ((raw[1] >> 1) + (raw[2] << 7)) / 64.0
             distance = (raw[3] + (raw[4] << 8)) / 4.0
             return new_scan, quality, angle, distance
- 

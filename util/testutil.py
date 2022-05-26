@@ -33,15 +33,15 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('SITL')
+        self.lidar = driver.SensorDriver('RPlidar')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
 
         #Front sensor
-        # self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
+        self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
         #SITL
-        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
