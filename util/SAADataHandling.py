@@ -122,16 +122,20 @@ class DataPreProcessor():
     def convert_body_to_inertial_frame(self):
         #5.7697296142578125e-05 seconds
 
+        height_allowance = 10
+
         #These x and y are updated in the mainloop
         x = self.x
         y = self.y
         z = np.zeros([len(x)])
+
+        #Don't store in map, if the obstacles are below a certain height. 
         ignore_obstacle_flag = 1
-        if(self.pz)<=10:
-            ignore_obstacle_flag = 40
+        if(self.pz)<=height_allowance:
+            ignore_obstacle_flag = 400 #400 gets deleted by the forget_far_obstacle function.
         
         #Obstacle vector in the body frame
-        obstacle_vector_body = np.array([x,y,z])
+        obstacle_vector_body = np.array([x,y,z])*ignore_obstacle_flag
 
         #Convert from body to inertial frame
         self.obstacle_vector_inertial = np.dot(self.b2i_matrix,obstacle_vector_body)
