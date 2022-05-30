@@ -34,6 +34,7 @@ class ObstacleAvoidance(ObstacleHandle):
     """
     def __init__(self,max_obs = 10):
         self.vec = vmath.vector()
+        self.filter = vmath.Filter()
         self.vx = 0
         self.vy = 0
         self.px = 0
@@ -42,6 +43,9 @@ class ObstacleAvoidance(ObstacleHandle):
         self.obstacle_map = None
         self.brake = 0
         self.pos_vector = [0,0]
+
+        self.prev_px = 0
+        self.prev_py = 0
 
         self.engaging_distance = max_obs
 
@@ -57,8 +61,15 @@ class ObstacleAvoidance(ObstacleHandle):
         @TODO: This seems to be a very sensitive vector
         Adding an estimator based on position and velocity will be better
         """
-        dt = 0.5 # Doesn't matter as long it is positive scalar
-        self.pos_vector = [self.vx*dt,self.vy*dt]
+        dt = 0.5 #Should be the same as update frequency of previous_position_storer
+
+        #Velocity based direction prediction was extremely sensitive, resulting in skewing of angles
+        #Delta position
+        self.dvelx = (self.px - self.prev_px)
+        self.dvely = self.py - self.prev_py
+
+        #Fusing pos based velocity and raw velocity to get a better estimate 
+        self.pos_vector = [self.filter.low_pass_filter(self.dvelx,self.vx*dt),self.filter.low_pass_filter(self.dvely,self.vy*dt)]
     
     
     def scale(self,val):
@@ -108,7 +119,7 @@ class ObstacleAvoidance(ObstacleHandle):
                 if True:
                     
                     #If drone is not moving or obstacle is beyond the specified limits -> don't engage 
-                    if(self.vec.mag2d(self.pos_vector)==0.0 or self.vec.mag2d(obstacle_vector)==0 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
+                    if(self.vec.mag2d(self.pos_vector)<=0.05 or self.vec.mag2d(obstacle_vector)<=0.5 or self.vec.mag2d(obstacle_vector)>=self.engaging_distance):                    
                         obstacle_angle = 1000
                     
                     #Compute the angle between the predicted position and obstacle on the field

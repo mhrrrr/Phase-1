@@ -159,8 +159,17 @@ class LateralTransformation():
 class Filter():
     def __init__(self) -> None:
         pass
-    def low_pass_filter(self):
-        pass
+    def low_pass_filter(self,previous_val,current_val):
+        """A simple 20% cutoff low pass filter
+        Current I am using this as a fusion filter
+        Args:
+            previous_val (float): Memory
+            current_val (float): Current
+        
+        Return:
+
+        """
+        return 0.8*previous_val + 0.2*current_val
 
     def three_window_fast_median_filter(self):
         pass

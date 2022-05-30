@@ -33,15 +33,15 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread = None
 
         #Initialise SITL driver
-        self.lidar = driver.SensorDriver('RPlidar')
+        self.lidar = driver.SensorDriver('SITL')
 
         #Connect to the listener - ensure the listener is running in background!!
         self.lidar.connect_and_fetch()
 
         #Front sensor
-        self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
+        #self.front_sensor = estimation.Sensor(1,1*math.pi/180,12,0.01,0)
         #SITL
-        # self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
+        self.front_sensor = estimation.Sensor(1,0.03098,40,1,-0.976)
 
         #Initialise pre processor
         self.coordinate_transform = estimation.DataPreProcessor()
@@ -57,6 +57,12 @@ class TestCompanionComputer(CompanionComputer):
         self.alreadybraked = 0
         self.initvar=1
 
+        #Initiatialising Position Predictor Vectors
+        self.prev_px = 0
+        self.prev_py = 0
+        self.px = 0
+        self.py = 0
+
         
 
         
@@ -71,10 +77,10 @@ class TestCompanionComputer(CompanionComputer):
         self.handleRecievedMsgThread.start()
 
         ### Starting reading threads as they are while loops ###
-        # t1 = threading.Thread(target=self.lidar.give_scan_values)
-        # t1.start()
-        # t2 = threading.Thread(target=self.lidar.read_fast)
-        # t2.start()
+        t1 = threading.Thread(target=self.lidar.give_scan_values)
+        #t1.start()
+        t2 = threading.Thread(target=self.lidar.read_fast)
+        #t2.start()
         
         
         # set data stream rate
@@ -86,7 +92,8 @@ class TestCompanionComputer(CompanionComputer):
 
         #Scheduled the threads
         self.scheduledTaskList.append(ScheduleTask(0.02, self.lidar.update_sitl_sensor))
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.update_vars))
+        self.scheduledTaskList.append(ScheduleTask(0.008, self.update_vars))
+        self.scheduledTaskList.append(ScheduleTask(0.5, self.previous_position_storer))
         #self.scheduledTaskList.append(ScheduleTask(0.000000000000000001, self.lidar.give_scan_values))
         #self.give_scan_values()
         # self.scheduledTaskList.append(ScheduleTask(0.00002,self.lidar.update_rplidar))
@@ -94,7 +101,7 @@ class TestCompanionComputer(CompanionComputer):
         self.scheduledTaskList.append(ScheduleTask(0.02, self.coordinate_transform.update_vehicle_states))
         self.scheduledTaskList.append(ScheduleTask(0.02, self.coordinate_transform.convert_body_to_inertial_frame))
 
-        self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.predict_pos_vector))
+        self.scheduledTaskList.append(ScheduleTask(0.5, self.navigation_controller.predict_pos_vector))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.navigation_controller.basic_stop))
         self.scheduledTaskList.append(ScheduleTask(0.01, self.handbrake))
         self.scheduledTaskList.append(ScheduleTask(0.05,self.navigation_stack))
@@ -119,6 +126,15 @@ class TestCompanionComputer(CompanionComputer):
                                                                                            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
                                                                                            17))    
             self.alreadybraked = 1
+            
+    def previous_position_storer(self):
+        """Warning: This function should be called at a co-prime pair frequency with update_vars
+        The function relies on the fact that the current value has already been updated and in the update_vars and the 
+        previous position is stored for 1 second. 
+        [Tested in SITL]
+        """
+        self.prev_px = self.px
+        self.prev_py = self.py
 
     def debug(self):
         """Debugger if you want to print something
@@ -156,6 +172,10 @@ class TestCompanionComputer(CompanionComputer):
         self.navigation_controller.mode = self.currentMode
         self.navigation_map.px = self.px
         self.navigation_map.py = self.py
+
+        self.navigation_controller.prev_px = self.prev_px
+        self.navigation_controller.prev_py = self.prev_py
+
 
 
     def navigation_stack(self):
